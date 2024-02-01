@@ -1,0 +1,16 @@
+{%  if  Request.target == "clash" or Request.target ==  "clashr" %}
+    mixed-port: {{ Global.clash.mixed_port |  default: "7890" }}
+    allow-lan: {{ Global.clash.allow_lan |  default: "false" }}
+    mode: Rule
+    log-level: {{ Global.clash.log_level | default: "info" }}
+    external-controller: {{ Global.clash.external_controller | default: "127.0.0.1:9090" }}
+    {%- assign clashDns = Request.clash.dns | bool -%}
+    {% if clashDns %}
+        dns:
+        enable: true
+        listen: :1053
+    {% endif %}
+    proxies: ~
+    proxy-groups: ~
+    rules: ~
+{% endif %}
