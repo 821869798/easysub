@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.5
 
 require (
-	github.com/821869798/fankit v0.0.6
+	github.com/821869798/fankit v0.0.7
 	github.com/BurntSushi/toml v1.5.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/goccy/go-yaml v1.17.1
