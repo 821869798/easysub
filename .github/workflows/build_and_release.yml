@@ -1,0 +1,105 @@
+# .github/workflows/release.yml
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 触发条件：推送以v开头的标签，如v1.0.0
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # 获取完整历史以确保正确的版本信息
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23' # 使用Go 1.21，可以根据你的需求调整
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract repository name
+        id: repo_name
+        run: echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Build optimized multi-platform binaries
+        run: |
+          # 创建输出目录
+          mkdir -p dist
+          
+          # 获取仓库名称作为二进制文件名
+          BINARY_NAME="${{ steps.repo_name.outputs.REPO_NAME }}"
+          echo "Building binary: $BINARY_NAME"
+          
+          # 通用构建标志 - 最小化二进制文件大小
+          # -s: 禁用符号表
+          # -w: 禁用DWARF调试信息
+          # -trimpath: 从二进制文件中删除所有文件系统路径
+          LDFLAGS="-s -w -X main.version=${{ steps.get_version.outputs.VERSION }}"
+          
+          # Linux (amd64 和 arm64)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/${BINARY_NAME}-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/${BINARY_NAME}-linux-arm64
+          
+          # macOS (amd64 和 arm64 - Apple Silicon)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/${BINARY_NAME}-macos-amd64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/${BINARY_NAME}-macos-arm64
+          
+          # Windows
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/${BINARY_NAME}-windows-amd64.exe
+          
+          # 列出生成的文件及其大小
+          ls -lh dist/
+
+      - name: Create archives
+        run: |
+          mkdir -p releases
+          
+          # 获取仓库名称作为二进制文件名
+          BINARY_NAME="${{ steps.repo_name.outputs.REPO_NAME }}"
+          
+          # Linux
+          tar -czf releases/${BINARY_NAME}-linux-amd64.tar.gz -C dist ${BINARY_NAME}-linux-amd64
+          tar -czf releases/${BINARY_NAME}-linux-arm64.tar.gz -C dist ${BINARY_NAME}-linux-arm64
+          
+          # macOS 
+          tar -czf releases/${BINARY_NAME}-macos-amd64.tar.gz -C dist ${BINARY_NAME}-macos-amd64
+          tar -czf releases/${BINARY_NAME}-macos-arm64.tar.gz -C dist ${BINARY_NAME}-macos-arm64
+          
+          # Windows
+          zip -j releases/${BINARY_NAME}-windows-amd64.zip dist/${BINARY_NAME}-windows-amd64.exe
+
+      - name: Build Changelog
+        id: github_release
+        uses: mikepenz/release-changelog-builder-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: ${{steps.github_release.outputs.changelog}}
+          draft: false
+          prerelease: false
+          files: |
+            releases/${{ steps.repo_name.outputs.REPO_NAME }}-linux-amd64.tar.gz
+            releases/${{ steps.repo_name.outputs.REPO_NAME }}-linux-arm64.tar.gz
+            releases/${{ steps.repo_name.outputs.REPO_NAME }}-macos-amd64.tar.gz
+            releases/${{ steps.repo_name.outputs.REPO_NAME }}-macos-arm64.tar.gz
+            releases/${{ steps.repo_name.outputs.REPO_NAME }}-windows-amd64.zip
