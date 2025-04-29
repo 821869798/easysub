@@ -87,7 +87,7 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 
 			slog.Infof("Updating ruleset url '%s' with group '%s'.", ruleUrl, ruleGroup)
 
-			content, _ := fetch.FetchFile(ruleUrl, config.Global.Common.ProxyRuleset, config.Global.Advance.CacheRuleset, true)
+			content, _ := fetch.FetchFile(ruleUrl, config.Global.Common.ProxyRuleset, config.Global.Advance.CacheRuleset, false)
 
 			rc := &RulesetContent{
 				RuleGroup:      ruleGroup,

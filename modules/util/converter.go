@@ -29,7 +29,7 @@ func ConvertToNestedMap(flatMap map[string]string) map[string]interface{} {
 	return nestedMap
 }
 
-func ConvertKVToNestedMap(flatMap []*config.AppConfigTemplateKV) map[string]interface{} {
+func ConvertKVToNestedMap(flatMap []*config.AppConfigKeyValue) map[string]interface{} {
 	nestedMap := make(map[string]interface{})
 	for _, kv := range flatMap {
 		key := kv.Key

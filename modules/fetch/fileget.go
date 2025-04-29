@@ -10,10 +10,6 @@ import (
 
 // FileGet 读取本地文件的内容
 func FileGet(path string) (string, error) {
-	// 检查是否有 ..
-	if strings.Contains(path, "..") {
-		return "", errors.New("invalid path: contains '..'")
-	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -23,6 +19,11 @@ func FileGet(path string) (string, error) {
 
 // 从file://URI中获取安全的文件路径，确保不会访问baseDirectory之外的文件
 func getSecureFilePath(fileURI string, baseDirectory string) (string, error) {
+	// 如果前缀是file://而不是file:///，则添加一个斜杠
+	if strings.HasPrefix(fileURI, "file://") && len(fileURI) > 7 && fileURI[7] != '/' {
+		fileURI = fileURI[:7] + "/" + fileURI[7:]
+	}
+
 	// 解析URI
 	parsedURI, err := url.Parse(fileURI)
 	if err != nil {

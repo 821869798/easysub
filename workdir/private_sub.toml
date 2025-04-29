@@ -1,0 +1,35 @@
+[[vars]]
+key = "node_normal"
+value = "trojan://Q65VqwMrwyJ@akk.test.xyz:443?ws=1&peer=akk.test.xyz&sni=akk.test.xyz#akk.89330595.xyz_trojan"
+
+[[vars]]
+key = "node_share"
+value = "trojan://57MrwyJ@zxx.test.xyz:443?ws=1&peer=zxx.test.xyz&sni=zxx.test.xyz#zxx.89330595.xyz_trojan"
+
+[[vars]]
+key = "node_full"
+value = "{node_normal}|{node_share}"
+
+[[vars]]
+key = "rule_noauto"
+value = "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/config/ACL4SSR_Online_NoAuto.ini"
+
+[[vars]]
+key = "my_rule_noauto"
+value = "file:///ACL4SSR_Online_NoAuto.ini"
+
+[[rewrites]]
+key = "/clash/112233"
+value = "sub?target=clash&url={node_full}&config={rule_noauto}"
+
+[[rewrites]]
+key = "/singbox/112233"
+value = "sub?target=singbox&url={node_full}&config={rule_noauto}"
+
+[[rewrites]]
+key = "/clash/445566"
+value = "sub?target=clash&url={node_full}&config={my_rule_noauto}"
+
+[[rewrites]]
+key = "/singbox/445566"
+value = "sub?target=singbox&url={node_full}&config={my_rule_noauto}"

@@ -1,5 +1,5 @@
-github.com/821869798/fankit v0.0.7 h1:3eQLDkxWvvesO5qQrZy0r75Lk/BZmfbH5eS/MkOOF3s=
-github.com/821869798/fankit v0.0.7/go.mod h1:73w1EUt6i92eswVBeuUVVmHtjidOqcVsmwL3beokqQA=
+github.com/821869798/fankit v0.0.8 h1:p5tWz2Z3IVTVuWACDInlqZU6e1A71sk1utRbG/Fgkgw=
+github.com/821869798/fankit v0.0.8/go.mod h1:73w1EUt6i92eswVBeuUVVmHtjidOqcVsmwL3beokqQA=
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/bytedance/sonic v1.11.6 h1:oUp34TzMlL+OY1OUWxHqsdkgC/Zfc85zGqw9siXjrc0=

@@ -12,7 +12,7 @@ import (
 )
 
 func LoadExternalConfig(path string, ext *define2.ExternalConfig) error {
-	configContent, err := fetch.FetchFile(path, config.Global.Common.ProxyConfig, config.Global.Advance.CacheConfig, true)
+	configContent, err := fetch.FetchFile(path, config.Global.Common.ProxyConfig, config.Global.Advance.CacheConfig, false)
 	if err != nil {
 		return err
 	}

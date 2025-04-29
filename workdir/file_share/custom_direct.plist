@@ -1,0 +1,7 @@
+# 白名单 直连的网站
+
+#qq
+DOMAIN-SUFFIX,bugly.qq.com
+
+#dopus
+DOMAIN-SUFFIX,gpsoft.com

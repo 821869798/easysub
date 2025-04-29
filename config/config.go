@@ -66,22 +66,25 @@ type AppConfigAdvance struct {
 	CacheSubscription  int    `toml:"cache_subscription"`
 	CacheConfig        int    `toml:"cache_config"`
 	CacheRuleset       int    `toml:"cache_ruleset"`
-	EnableFileShare    bool   `toml:"enable_file_share"`
-	FileSharePath      string `toml:"file_share_path"`
 	MaxAllowedRules    int    `toml:"max_allowed_rules"`
 	MaxAllowedRulesets int    `toml:"max_allowed_rulesets"`
+	EnableFileShare    bool   `toml:"enable_file_share"`
+	FileSharePath      string `toml:"file_share_path"`
+	EnablePrivateSub   bool   `toml:"enable_private_sub"`
+	PrivateSubConfig   string `toml:"private_sub_config"`
 }
 
 type AppConfigTemplate struct {
-	Globals []*AppConfigTemplateKV `toml:"globals"`
+	Globals []*AppConfigKeyValue `toml:"globals"`
 }
 
-type AppConfigTemplateKV struct {
+type AppConfigKeyValue struct {
 	Key   string
 	Value string
 }
 
 var Global *AppConfig
+var PrivateSub *AppConfigPrivateSub
 
 func LoadConfig(path string) {
 
@@ -94,6 +97,15 @@ func LoadConfig(path string) {
 	}
 	if Global.NodePref.SingboxRulesets == nil {
 		Global.NodePref.SingboxRulesets = make(map[string]*AppConfigRulesetTransform)
+	}
+
+	if Global.Advance.EnablePrivateSub && Global.Advance.PrivateSubConfig != "" {
+		// load private sub config
+		_, err := toml.DecodeFile(Global.Advance.PrivateSubConfig, &PrivateSub)
+		if err != nil {
+			slog.PanicErr(err)
+		}
+		PrivateSub.afterPrivateSubLoad()
 	}
 
 }
