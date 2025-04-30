@@ -1,0 +1,83 @@
+{
+  "categories": [
+    {
+      "title": "🚀 Features",
+      "labels": ["feature", "feat"],
+      "rules": [
+        {
+          "pattern": "^\\(feat\\)|^\\[feat\\]",
+          "on_property": "message"
+        }
+      ]
+    },
+    {
+      "title": "🐛 Bug Fixes",
+      "labels": ["bug", "fix"],
+      "rules": [
+        {
+          "pattern": "^\\(fix\\)|^\\[fix\\]",
+          "on_property": "message"
+        }
+      ]
+    },
+    {
+      "title": "📄 Documentation",
+      "labels": ["documentation", "docs"],
+      "rules": [
+        {
+          "pattern": "^\\(docs\\)|^\\[docs\\]",
+          "on_property": "message"
+        }
+      ]
+    },
+    {
+      "title": "🧪 Tests",
+      "labels": ["test", "tests"],
+      "rules": [
+        {
+          "pattern": "^\\(test\\)|^\\[test\\]",
+          "on_property": "message"
+        }
+      ]
+    },
+    {
+      "title": "## 🧰 Workflow",
+      "labels": ["workflow"],
+      "rules": [
+        {
+          "pattern": "^\\(workflow\\)|^\\[workflow\\]",
+          "on_property": "message"
+        }
+      ]
+    },
+    {
+      "title": "⚙️ Chore",
+      "labels": ["chore"],
+      "exclude": true,
+      "rules": [
+        {
+          "pattern": "^\\(chore\\)|^\\[chore\\]",
+          "on_property": "message"
+        }
+      ]
+    }
+  ],
+  "ignore_labels": ["ignore"],
+  "template": "#{{CHANGELOG}}\n\n<details>\n<summary>Uncategorized</summary>\n\n#{{UNCATEGORIZED}}\n</details>",
+  "pr_template": "- ${{TITLE}} (#${{NUMBER}})",
+  "empty_template": "No changes",
+  "max_tags_to_fetch": 200,
+  "max_pull_requests": 200,
+  "max_back_track_time_days": 365,
+  "exclude_merge_branches": ["develop", "staging"],
+  "tag_resolver": {
+    "pattern": "^v(\\d*\\.\\d*\\.\\d*)$",
+    "transformer": "$1"
+  },
+  "transformers": [
+    {
+      "pattern": "[\\-\\*] (\\[(...|TEST|CI|SKIP)\\])( )?(.+?)\n(.+?[\\-\\*] )(.+)",
+      "target": "- $4\n  - $6"
+    }
+  ]
+}

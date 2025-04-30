@@ -66,25 +66,50 @@ jobs:
         run: |
           mkdir -p releases
           
-          # 获取仓库名称作为二进制文件名
+          # 获取仓库名称作为二进制文件名和目录名
           BINARY_NAME="${{ steps.repo_name.outputs.REPO_NAME }}"
+          DIR_NAME="${{ steps.repo_name.outputs.REPO_NAME }}"
           
-          # Linux
-          tar -czf releases/${BINARY_NAME}-linux-amd64.tar.gz -C dist ${BINARY_NAME}-linux-amd64
-          tar -czf releases/${BINARY_NAME}-linux-arm64.tar.gz -C dist ${BINARY_NAME}-linux-arm64
+          # 创建临时目录
+          mkdir -p tmp/${DIR_NAME}
           
-          # macOS 
-          tar -czf releases/${BINARY_NAME}-macos-amd64.tar.gz -C dist ${BINARY_NAME}-macos-amd64
-          tar -czf releases/${BINARY_NAME}-macos-arm64.tar.gz -C dist ${BINARY_NAME}-macos-arm64
+          # Linux amd64
+          cp dist/${BINARY_NAME}-linux-amd64 tmp/${DIR_NAME}/${BINARY_NAME}
+          cp -r workdir/* tmp/${DIR_NAME}/
+          tar -czf releases/${BINARY_NAME}-linux-amd64.tar.gz -C tmp ${DIR_NAME}
+          rm -rf tmp/${DIR_NAME}/*
+          
+          # Linux arm64
+          cp dist/${BINARY_NAME}-linux-arm64 tmp/${DIR_NAME}/${BINARY_NAME}
+          cp -r workdir/* tmp/${DIR_NAME}/
+          tar -czf releases/${BINARY_NAME}-linux-arm64.tar.gz -C tmp ${DIR_NAME}
+          rm -rf tmp/${DIR_NAME}/*
+          
+          # macOS amd64
+          cp dist/${BINARY_NAME}-macos-amd64 tmp/${DIR_NAME}/${BINARY_NAME}
+          cp -r workdir/* tmp/${DIR_NAME}/
+          tar -czf releases/${BINARY_NAME}-macos-amd64.tar.gz -C tmp ${DIR_NAME}
+          rm -rf tmp/${DIR_NAME}/*
+          
+          # macOS arm64
+          cp dist/${BINARY_NAME}-macos-arm64 tmp/${DIR_NAME}/${BINARY_NAME}
+          cp -r workdir/* tmp/${DIR_NAME}/
+          tar -czf releases/${BINARY_NAME}-macos-arm64.tar.gz -C tmp ${DIR_NAME}
+          rm -rf tmp/${DIR_NAME}/*
           
           # Windows
-          zip -j releases/${BINARY_NAME}-windows-amd64.zip dist/${BINARY_NAME}-windows-amd64.exe
+          cp dist/${BINARY_NAME}-windows-amd64.exe tmp/${DIR_NAME}/${BINARY_NAME}.exe
+          cp -r workdir/* tmp/${DIR_NAME}/
+          cd tmp && zip -r ../releases/${BINARY_NAME}-windows-amd64.zip ${DIR_NAME} && cd ..
 
       - name: Build Changelog
         id: github_release
-        uses: mikepenz/release-changelog-builder-action@v3
+        uses: mikepenz/release-changelog-builder-action@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          configuration: .github/changelog-config.json
+          mode: "COMMIT"
 
       - name: Create GitHub Release
         id: create_release
