@@ -41,7 +41,7 @@ func init() {
 			"type":            "remote",
 			"format":          "binary",
 			"url":             realUrl,
-			"download_detour": "direct",
+			"download_detour": "DIRECT",
 		}
 		// json 序列化
 		rulesetJson, err := json.Marshal(rulesetObject)
@@ -474,7 +474,7 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 					"type":            "remote",
 					"format":          "binary",
 					"url":             realUrl,
-					"download_detour": "direct",
+					"download_detour": "DIRECT",
 				}
 				rulesets[tagName] = rulesetObject
 			}
