@@ -32,6 +32,13 @@ func NewTriboolFromBool(b bool) Tribool {
 	return Tribool{value: falseValue}
 }
 
+func NewTriboolFromBoolPointer(b *bool) Tribool {
+	if b == nil {
+		return Tribool{value: indeterminate}
+	}
+	return NewTriboolFromBool(*b)
+}
+
 // NewTriboolFromString 从字符串创建 Tribool
 func NewTriboolFromString(str string) Tribool {
 	t := NewTribool()

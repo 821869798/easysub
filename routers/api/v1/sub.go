@@ -2,7 +2,7 @@ package v1
 
 import (
 	"github.com/821869798/easysub/config"
-	define2 "github.com/821869798/easysub/define"
+	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/clash"
 	"github.com/821869798/easysub/export/singbox"
 	"github.com/821869798/easysub/modules/fetch"
@@ -23,10 +23,10 @@ func Sub(c *gin.Context) {
 	argAppendType := queryArgOrDefaultTriBool(c, "append_type", config.Global.Common.AppendProxyType)
 	argSkipCertVerify := queryArgOrDefaultTriBool(c, "scv", config.Global.NodePref.SkipCertVerify)
 	argFilterDeprecated := queryArgOrDefaultTriBool(c, "fdn", config.Global.NodePref.FilterDeprecatedNodes)
-	argUDP := queryArgOrDefaultTriBool(c, "udp", config.Global.NodePref.UDPFlag)
-	argTFO := queryArgOrDefaultTriBool(c, "tfo", config.Global.NodePref.TCPFastOpenFlag)
+	argUDP := queryArgOrDefaultTriBoolAdvance(c, "udp", define.NewTriboolFromBoolPointer(config.Global.NodePref.UDPFlag))
+	argTFO := queryArgOrDefaultTriBoolAdvance(c, "tfo", define.NewTriboolFromBoolPointer(config.Global.NodePref.TCPFastOpenFlag))
 
-	ext := define2.NewExtraSettings()
+	ext := define.NewExtraSettings()
 	ext.NodePref = config.Global.NodePref
 	ext.AppendProxyType = argAppendType
 	ext.SkipCertVerify = argSkipCertVerify
@@ -55,8 +55,8 @@ func Sub(c *gin.Context) {
 		"Global":  util.ConvertKVToNestedMap(config.Global.Template.Globals),
 	}
 
-	var lRulesetContent []*define2.RulesetContent
-	var lCustomProxyGroups []*define2.ProxyGroupConfig
+	var lRulesetContent []*define.RulesetContent
+	var lCustomProxyGroups []*define.ProxyGroupConfig
 	//var lClashBase, lSingBoxBase string
 
 	// 解析config ---------------------------
@@ -65,7 +65,7 @@ func Sub(c *gin.Context) {
 	}
 	if argExternalConfig != "" {
 		slog.Info("External configuration file provided. Loading...")
-		extconf := define2.NewExternalConfig()
+		extconf := define.NewExternalConfig()
 		extconf.TplArgs = tplArgs
 		if err := parser.LoadExternalConfig(argExternalConfig, extconf); err != nil {
 			slog.Error(err)
@@ -74,7 +74,7 @@ func Sub(c *gin.Context) {
 		}
 		slog.Info("External configuration file loaded.")
 
-		lRulesetContent = define2.ParseRulesetContents(extconf.RulesetConfigs)
+		lRulesetContent = define.ParseRulesetContents(extconf.RulesetConfigs)
 		lCustomProxyGroups = extconf.CustomProxyGroups
 		//lClashBase = extconf.ClashRuleBase
 		//lSingBoxBase = extconf.SingboxRuleBase
@@ -86,7 +86,7 @@ func Sub(c *gin.Context) {
 	}
 
 	// 解析 代理node ------------------------
-	var nodes []*define2.Proxy
+	var nodes []*define.Proxy
 	settings := &parser.ParseSettings{}
 
 	groupId := uint32(0)

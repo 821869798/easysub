@@ -36,8 +36,8 @@ type AppConfigNodePref struct {
 	ClashProxiesStyle     string                                `toml:"clash_proxies_style"`
 	ClashProxyGroupsStyle string                                `toml:"clash_proxy_groups_style"`
 	SingboxAddClashModes  bool                                  `toml:"singbox_add_clash_modes"`
-	UDPFlag               bool                                  `toml:"udp_flag"`
-	TCPFastOpenFlag       bool                                  `toml:"tcp_fast_open_flag"`
+	UDPFlag               *bool                                 `toml:"udp_flag"`
+	TCPFastOpenFlag       *bool                                 `toml:"tcp_fast_open_flag"`
 	SkipCertVerify        bool                                  `toml:"skip_cert_verify"`
 	TLS13Flag             bool                                  `toml:"tls13_flag"`
 	FilterDeprecatedNodes bool                                  `toml:"filter_deprecated_nodes"`

@@ -30,6 +30,18 @@ func queryArgOrDefaultTriBool(c *gin.Context, argName string, def bool) define.T
 	return define.NewTriboolFromBool(boolValue)
 }
 
+func queryArgOrDefaultTriBoolAdvance(c *gin.Context, argName string, def define.Tribool) define.Tribool {
+	argValue := c.Query(argName)
+	if argValue == "" {
+		return def
+	}
+	boolValue, err := strconv.ParseBool(argValue)
+	if err != nil {
+		return def
+	}
+	return define.NewTriboolFromBool(boolValue)
+}
+
 func queryArgOrDefaultString(c *gin.Context, argName string, def string) string {
 	argValue := c.Query(argName)
 	if argValue == "" {
