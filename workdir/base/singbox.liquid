@@ -3,7 +3,7 @@
     {
     "log": {
     "disabled": false,
-    "level": "info",
+    "level": "{{ Global.singbox.log_level | default: "info" }}",
     "timestamp": true
     },
     "dns": {

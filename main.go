@@ -15,8 +15,8 @@ func main() {
 
 	loadConfig()
 
-	r := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
+	r := gin.Default()
 
 	routers.Setup(r)
 
@@ -24,6 +24,9 @@ func main() {
 	if portStr == "" {
 		portStr = strconv.Itoa(config.Global.Advance.DefaultPort)
 	}
+
+	// server run log
+	slog.Info("server run start,port:" + portStr)
 
 	err := r.Run(":" + portStr)
 	if err != nil {

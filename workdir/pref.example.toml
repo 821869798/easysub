@@ -96,6 +96,9 @@ value = "true"
 key = "singbox.mixed_port"
 value = "2080"
 
+[[template.globals]]
+key = "singbox.log_level"
+value = "info"
 
 [advance]
 default_port = 25500
