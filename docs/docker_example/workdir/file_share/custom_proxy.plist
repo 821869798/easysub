@@ -1,0 +1,13 @@
+# 自定义的代理列表 
+
+#这三个只是示例,对应匹配的三种模式
+#DOMAIN-SUFFIX,openai.com
+#DOMAIN-KEYWORD,youtube
+#DOMAIN,www.google.com
+
+#unity
+DOMAIN-SUFFIX,unity.com
+DOMAIN-SUFFIX,unity3d.com
+
+#golang
+DOMAIN-SUFFIX,go.dev

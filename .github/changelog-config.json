@@ -5,7 +5,7 @@
       "labels": ["feature", "feat"],
       "rules": [
         {
-          "pattern": "^\\(feat\\)|^\\[feat\\]",
+          "pattern": "^\\(feat\\)|^\\[feat\\]|^feat:",
           "on_property": "message"
         }
       ]
@@ -15,7 +15,7 @@
       "labels": ["bug", "fix"],
       "rules": [
         {
-          "pattern": "^\\(fix\\)|^\\[fix\\]",
+          "pattern": "^\\(fix\\)|^\\[fix\\]|^fix:",
           "on_property": "message"
         }
       ]
@@ -25,7 +25,7 @@
       "labels": ["documentation", "docs"],
       "rules": [
         {
-          "pattern": "^\\(docs\\)|^\\[docs\\]",
+          "pattern": "^\\(docs\\)|^\\[docs\\]|^docs:",
           "on_property": "message"
         }
       ]
@@ -35,7 +35,7 @@
       "labels": ["test", "tests"],
       "rules": [
         {
-          "pattern": "^\\(test\\)|^\\[test\\]",
+          "pattern": "^\\(test\\)|^\\[test\\]|^test:",
           "on_property": "message"
         }
       ]
@@ -45,7 +45,7 @@
       "labels": ["workflow"],
       "rules": [
         {
-          "pattern": "^\\(workflow\\)|^\\[workflow\\]",
+          "pattern": "^\\(workflow\\)|^\\[workflow\\]|^workflow:",
           "on_property": "message"
         }
       ]
@@ -56,7 +56,7 @@
       "exclude": true,
       "rules": [
         {
-          "pattern": "^\\(chore\\)|^\\[chore\\]",
+          "pattern": "^\\(chore\\)|^\\[chore\\]|^chore:",
           "on_property": "message"
         }
       ]

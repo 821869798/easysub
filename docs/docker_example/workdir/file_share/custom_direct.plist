@@ -1,0 +1,23 @@
+# 白名单 直连的网站
+
+
+DOMAIN-SUFFIX,fly.io
+DOMAIN-SUFFIX,fly.dev
+
+DOMAIN-SUFFIX,zeabur.com
+
+DOMAIN-SUFFIX,notion.so
+DOMAIN-SUFFIX,notion.site
+
+DOMAIN-SUFFIX,unityassetcollection.com
+
+#Game
+DOMAIN-SUFFIX,greenmangaming.com
+DOMAIN-SUFFIX,fanatical.com
+DOMAIN-SUFFIX,humblebundle.com
+
+#qq
+DOMAIN-SUFFIX,bugly.qq.com
+
+#dopus
+DOMAIN-SUFFIX,gpsoft.com

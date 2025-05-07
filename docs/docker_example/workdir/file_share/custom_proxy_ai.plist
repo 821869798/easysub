@@ -1,0 +1,6 @@
+# 自定义的代理列表 
+# 跟openai一样走有地区限制的代理
+
+# google ai
+DOMAIN-SUFFIX,bard.google.com
+DOMAIN-SUFFIX,gemini.google.com

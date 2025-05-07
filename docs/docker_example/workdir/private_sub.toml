@@ -1,0 +1,52 @@
+[[vars]]
+key = "node_normal"
+value = "trojan://password@node1.123456.xyz:443?ws=1&peer=node1.123456.xyz&sni=node1.123456.xyz#node1.123456.xyz_trojan"
+
+[[vars]]
+key = "node_share"
+value = "trojan://password@node2.123456.xyz:443?ws=1&peer=node2.123456.xyz&sni=node2.123456.xyz#node2.123456.xyz_trojan|trojan://Z8yVWzMKyJ@eus.unifan.top:443?ws=1&peer=eus.unifan.top&sni=eus.unifan.top#eus.unifan.top_trojan"
+
+[[vars]]
+key = "node_full"
+value = "{node_normal}|{node_share}"
+
+[[vars]]
+key = "no_rule"
+value = "file:///ACL4SSR_NoRule.ini"
+
+[[vars]]
+key = "rule_noauto"
+value = "file:///ACL4SSR_Online_NoAuto.ini"
+
+[[vars]]
+key = "rule_noauto_adblock"
+value = "file:///ACL4SSR_Online_NoAuto_AdblockPlus.ini"
+
+[[vars]]
+key = "rule_noauto_acl4ssr"
+value = "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/config/ACL4SSR_Online_NoAuto.ini"
+
+
+[[rewrites]]
+key = "/clash/R7wpDs1g6g0XggQV/no_rule"
+value = "sub?target=clash&url={node_full}&config={no_rule}"
+
+[[rewrites]]
+key = "/clash/R7wpDs1g6g0XggQV/rule_noauto"
+value = "sub?target=clash&url={node_full}&config={rule_noauto}"
+
+[[rewrites]]
+key = "/clash/R7wpDs1g6g0XggQV/rule_noauto_adblock"
+value = "sub?target=clash&url={node_full}&config={rule_noauto_adblock}"
+
+[[rewrites]]
+key = "/singbox/R7wpDs1g6g0XggQV/no_rule"
+value = "sub?target=singbox&url={node_full}&config={no_rule}"
+
+[[rewrites]]
+key = "/singbox/R7wpDs1g6g0XggQV/rule_noauto"
+value = "sub?target=singbox&url={node_full}&config={rule_noauto}"
+
+[[rewrites]]
+key = "/singbox/R7wpDs1g6g0XggQV/rule_noauto_adblock"
+value = "sub?target=singbox&url={node_full}&config={rule_noauto_adblock}"
