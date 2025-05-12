@@ -1,7 +1,7 @@
 package util
 
 import (
-	"fmt"
+	"log"
 	"testing"
 )
 
@@ -13,14 +13,14 @@ func TestRegGetMatch(t *testing.T) {
 
 	err := RegGetMatch(ssr, pattern, &server, &port, &protocol, &method, &obfs, &password)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 
-	fmt.Println("Server:", server)
-	fmt.Println("Port:", port)
-	fmt.Println("Protocol:", protocol)
-	fmt.Println("Method:", method)
-	fmt.Println("Obfs:", obfs)
-	fmt.Println("Password:", password)
+	log.Println("Server:", server)
+	log.Println("Port:", port)
+	log.Println("Protocol:", protocol)
+	log.Println("Method:", method)
+	log.Println("Obfs:", obfs)
+	log.Println("Password:", password)
 }

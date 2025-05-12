@@ -2,17 +2,17 @@ package parser
 
 import (
 	"encoding/json"
-	define2 "github.com/821869798/easysub/define"
+	define "github.com/821869798/easysub/define"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/821869798/easysub/modules/util"
-	"github.com/gookit/slog"
+	"log/slog"
 )
 
-func explode(link string, node *define2.Proxy) {
+func explode(link string, node *define.Proxy) {
 	if strings.HasPrefix(link, "vmess://") || strings.HasPrefix(link, "vmess1://") {
 		explodeVmess(link, node)
 	} else if strings.HasPrefix(link, "vless://") || strings.HasPrefix(link, "vless1://") {
@@ -32,7 +32,7 @@ func explode(link string, node *define2.Proxy) {
 	}
 }
 
-func explodeSS(link string, node *define2.Proxy) {
+func explodeSS(link string, node *define.Proxy) {
 	ss := strings.ReplaceAll(link[5:], "/?", "?")
 	var ps, password, method, server, port, plugins, plugin, pluginopts, addition, group string
 
@@ -78,10 +78,10 @@ func explodeSS(link string, node *define2.Proxy) {
 		ps = server + ":" + port
 	}
 
-	define2.SSProxyInit(node, group, ps, server, port, password, method, plugin, pluginopts, define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.SSProxyInit(node, group, ps, server, port, password, method, plugin, pluginopts, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeVmess(vmess string, node *define2.Proxy) {
+func explodeVmess(vmess string, node *define.Proxy) {
 	if ok, _ := regexp.MatchString("vmess://([A-Za-z0-9-_]+)\\?(.*)", vmess); ok {
 		explodeStdVMess(vmess, node)
 		return
@@ -180,10 +180,10 @@ func explodeVmess(vmess string, node *define2.Proxy) {
 
 	add = strings.TrimSpace(add)
 
-	define2.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, ps, add, port, typeStr, id, aid, net, "auto", path, host, "", tls, sni, define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, ps, add, port, typeStr, id, aid, net, "auto", path, host, "", tls, sni, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeStdVMess(vmess string, node *define2.Proxy) {
+func explodeStdVMess(vmess string, node *define.Proxy) {
 	add, port, typeStr, id, aid, net, path, host, tls, remarks := "", "", "", "", "", "", "", "", "", ""
 	addition := ""
 
@@ -217,10 +217,10 @@ func explodeStdVMess(vmess string, node *define2.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define2.VMessProxyInit(node, "", remarks, add, port, typeStr, id, aid, net, "", path, host, "", tls, "", define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.VMessProxyInit(node, "", remarks, add, port, typeStr, id, aid, net, "", path, host, "", tls, "", define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeShadowrocket(rocket string, node *define2.Proxy) {
+func explodeShadowrocket(rocket string, node *define.Proxy) {
 	add, port, cipher, id, net, path, host, tls, remarks := "", "", "", "", "tcp", "", "", "", ""
 	obfs := ""
 	addition := ""
@@ -269,10 +269,10 @@ func explodeShadowrocket(rocket string, node *define2.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define2.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, cipher, path, host, "", tls, "", define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, cipher, path, host, "", tls, "", define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeKitsunebi(kit string, node *define2.Proxy) {
+func explodeKitsunebi(kit string, node *define.Proxy) {
 	add := ""
 	port := ""
 	id := ""
@@ -320,11 +320,11 @@ func explodeKitsunebi(kit string, node *define2.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define2.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, cipher, path, host, "", tls, "", define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.VMessProxyInit(node, V2RAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, cipher, path, host, "", tls, "", define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 
 }
 
-func explodeQuan(quan string, node *define2.Proxy) {
+func explodeQuan(quan string, node *define.Proxy) {
 	strTemp := util.RegReplace(quan, "(.*?) = (.*)", "$1,$2", true)
 	configs := strings.Split(strTemp, ",")
 
@@ -384,12 +384,12 @@ func explodeQuan(quan string, node *define2.Proxy) {
 			}
 		}
 
-		define2.VMessProxyInit(node, group, ps, add, port, "none", id, "0", net, cipher, path, host, edge, tls, "", define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+		define.VMessProxyInit(node, group, ps, add, port, "none", id, "0", net, cipher, path, host, edge, tls, "", define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 	}
 
 }
 
-func explodeSocks(link string, node *define2.Proxy) {
+func explodeSocks(link string, node *define.Proxy) {
 	var group, remarks, server, port, username, password string
 
 	if strings.HasPrefix(link, "socks://") {
@@ -437,10 +437,10 @@ func explodeSocks(link string, node *define2.Proxy) {
 		return
 	}
 
-	define2.SocksProxyInit(node, group, remarks, server, port, username, password, define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.SocksProxyInit(node, group, remarks, server, port, username, password, define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeHTTP(link string, node *define2.Proxy) {
+func explodeHTTP(link string, node *define.Proxy) {
 	var group, remarks, server, port, username, password string
 	server = util.GetUrlArg(link, "server")
 	port = util.GetUrlArg(link, "port")
@@ -459,10 +459,10 @@ func explodeHTTP(link string, node *define2.Proxy) {
 		return
 	}
 
-	define2.HttpProxyInit(node, group, remarks, server, port, username, password, strings.Contains(link, "/https"), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.HttpProxyInit(node, group, remarks, server, port, username, password, strings.Contains(link, "/https"), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeHTTPSub(link string, node *define2.Proxy) {
+func explodeHTTPSub(link string, node *define.Proxy) {
 	var group, remarks, server, port, username, password string
 	var addition string
 	tls := strings.Contains(link, "https://")
@@ -495,15 +495,15 @@ func explodeHTTPSub(link string, node *define2.Proxy) {
 		return
 	}
 
-	define2.HttpProxyInit(node, group, remarks, server, port, username, password, tls, define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.HttpProxyInit(node, group, remarks, server, port, username, password, tls, define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
-func explodeTrojan(trojan string, node *define2.Proxy) {
+func explodeTrojan(trojan string, node *define.Proxy) {
 	trojan = trojan[9:]
 	pos := strings.LastIndex(trojan, "#")
 
 	var remark, group, server, port, psk, addition, host, path, network string
-	var tfo, scv define2.Tribool
+	var tfo, scv define.Tribool
 
 	if pos != -1 {
 		remark, _ = url.QueryUnescape(trojan[pos+1:])
@@ -526,8 +526,8 @@ func explodeTrojan(trojan string, node *define2.Proxy) {
 	if host == "" {
 		host = util.GetUrlArg(addition, "peer")
 	}
-	tfo = define2.NewTriboolFromString(util.GetUrlArg(addition, "tfo"))
-	scv = define2.NewTriboolFromString(util.GetUrlArg(addition, "allowInsecure"))
+	tfo = define.NewTriboolFromString(util.GetUrlArg(addition, "tfo"))
+	scv = define.NewTriboolFromString(util.GetUrlArg(addition, "allowInsecure"))
 	group, _ = url.QueryUnescape(util.GetUrlArg(addition, "group"))
 
 	isWs, _ := strconv.ParseBool(util.GetUrlArg(addition, "ws"))
@@ -549,23 +549,23 @@ func explodeTrojan(trojan string, node *define2.Proxy) {
 		group = TROJAN_DEFAULT_GROUP
 	}
 
-	define2.TrojanProxyInit(node, group, remark, server, port, psk, network, host, path, true, tfo, scv, define2.NewTribool(), define2.NewTribool())
+	define.TrojanProxyInit(node, group, remark, server, port, psk, network, host, path, true, tfo, scv, define.NewTribool(), define.NewTribool())
 }
 
-func explodeNetch(netch string, node *define2.Proxy) {
+func explodeNetch(netch string, node *define.Proxy) {
 	var jsonData map[string]interface{}
 	var typeStr, group, remark, address, port, username, password, method, plugin, pluginopts string
 	var obfs, id, aid, transprot, faketype, host, edge, path, tls, sni string
-	var udp, tfo, scv define2.Tribool
+	var udp, tfo, scv define.Tribool
 
 	decodedNetch, err := util.UrlSafeBase64Decode(netch[8:])
 	if err != nil {
-		slog.Error("explodeNetch decode error: ", err)
+		slog.Error("explodeNetch decode error: " + err.Error())
 		return
 	}
 
 	if err := json.Unmarshal([]byte(decodedNetch), &jsonData); err != nil {
-		slog.Error("explodeNetch unmarshal error: ", err)
+		slog.Error("explodeNetch unmarshal error: " + err.Error())
 		return
 	}
 
@@ -573,9 +573,9 @@ func explodeNetch(netch string, node *define2.Proxy) {
 	group = jsonData["Group"].(string)
 	remark = jsonData["Remark"].(string)
 	address = jsonData["Hostname"].(string)
-	udp = define2.GetTriboolFromMap(jsonData, "EnableUDP")
-	tfo = define2.GetTriboolFromMap(jsonData, "EnableTFO")
-	scv = define2.GetTriboolFromMap(jsonData, "AllowInsecure")
+	udp = define.GetTriboolFromMap(jsonData, "EnableUDP")
+	tfo = define.GetTriboolFromMap(jsonData, "EnableTFO")
+	scv = define.GetTriboolFromMap(jsonData, "AllowInsecure")
 	port = jsonData["Port"].(string)
 	if port == "0" {
 		return
@@ -593,7 +593,7 @@ func explodeNetch(netch string, node *define2.Proxy) {
 		if group == "" {
 			group = SS_DEFAULT_GROUP
 		}
-		define2.SSProxyInit(node, group, remark, address, port, password, method, plugin, pluginopts, udp, tfo, scv, define2.NewTribool())
+		define.SSProxyInit(node, group, remark, address, port, password, method, plugin, pluginopts, udp, tfo, scv, define.NewTribool())
 	case "VMess":
 		id = jsonData["UserID"].(string)
 		aid = jsonData["AlterID"].(string)
@@ -607,18 +607,18 @@ func explodeNetch(netch string, node *define2.Proxy) {
 		if group == "" {
 			group = V2RAY_DEFAULT_GROUP
 		}
-		define2.VMessProxyInit(node, group, remark, address, port, faketype, id, aid, transprot, method, path, host, edge, tls, sni, udp, tfo, scv, define2.NewTribool())
+		define.VMessProxyInit(node, group, remark, address, port, faketype, id, aid, transprot, method, path, host, edge, tls, sni, udp, tfo, scv, define.NewTribool())
 	case "Socks5":
 		username = jsonData["Username"].(string)
 		if group == "" {
 			group = SOCKS_DEFAULT_GROUP
 		}
-		define2.SocksProxyInit(node, group, remark, address, port, username, password, udp, tfo, scv)
+		define.SocksProxyInit(node, group, remark, address, port, username, password, udp, tfo, scv)
 	case "HTTP", "HTTPS":
 		if group == "" {
 			group = HTTP_DEFAULT_GROUP
 		}
-		define2.HttpProxyInit(node, group, remark, address, port, username, password, typeStr == "HTTPS", tfo, scv, define2.NewTribool())
+		define.HttpProxyInit(node, group, remark, address, port, username, password, typeStr == "HTTPS", tfo, scv, define.NewTribool())
 	case "Trojan":
 		host = jsonData["Host"].(string)
 		path = jsonData["Path"].(string)
@@ -627,7 +627,7 @@ func explodeNetch(netch string, node *define2.Proxy) {
 		if group == "" {
 			group = TROJAN_DEFAULT_GROUP
 		}
-		define2.TrojanProxyInit(node, group, remark, address, port, password, transprot, host, path, tls == "true", udp, tfo, scv, define2.NewTribool())
+		define.TrojanProxyInit(node, group, remark, address, port, password, transprot, host, path, tls == "true", udp, tfo, scv, define.NewTribool())
 	case "Snell":
 		obfs = jsonData["OBFS"].(string)
 		host = jsonData["Host"].(string)
@@ -635,21 +635,21 @@ func explodeNetch(netch string, node *define2.Proxy) {
 		if group == "" {
 			group = SNELL_DEFAULT_GROUP
 		}
-		define2.SnellProxyInit(node, group, remark, address, port, password, obfs, host, util.Str2UInt16(aid), udp, tfo, scv)
+		define.SnellProxyInit(node, group, remark, address, port, password, obfs, host, util.Str2UInt16(aid), udp, tfo, scv)
 	default:
 		return
 	}
 
 }
 
-func explodeVless(vless string, node *define2.Proxy) {
+func explodeVless(vless string, node *define.Proxy) {
 	if ok, _ := regexp.MatchString("vless://(.*?)@(.*)", vless); ok {
 		explodeStdVless(vless, node)
 		return
 	}
 }
 
-func explodeStdVless(vless string, node *define2.Proxy) {
+func explodeStdVless(vless string, node *define.Proxy) {
 	var add, port, id, aid, net, flow, pbk, sid, fp, mode, path, host, tls, remarks string
 	var addition string
 
@@ -695,5 +695,5 @@ func explodeStdVless(vless string, node *define2.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define2.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define2.NewTribool(), define2.NewTribool(), define2.NewTribool(), define2.NewTribool())
+	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }

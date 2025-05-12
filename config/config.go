@@ -1,8 +1,9 @@
 package config
 
 import (
-	"github.com/BurntSushi/toml"
-	"github.com/gookit/slog"
+	"github.com/pelletier/go-toml/v2"
+	"log/slog"
+	"os"
 )
 
 type AppConfig struct {
@@ -18,7 +19,7 @@ type AppConfigCommon struct {
 	ApiMode               bool     `toml:"api_mode"`
 	ApiAccessToken        string   `toml:"api_access_token"`
 	DefaultUrl            []string `toml:"default_url"`
-	EnableInsert          bool     `toml:"enable_insert"`
+	EnableInsert          *bool    `toml:"enable_insert"`
 	InsertUrl             []string `toml:"insert_url"`
 	PrependInsertUrl      bool     `toml:"prepend_insert_url"`
 	DefaultExternalConfig string   `toml:"default_external_config"`
@@ -28,7 +29,7 @@ type AppConfigCommon struct {
 	ProxyConfig           string   `toml:"proxy_config"`
 	ProxyRuleset          string   `toml:"proxy_ruleset"`
 	ProxySubscription     string   `toml:"proxy_subscription"`
-	AppendProxyType       bool     `toml:"append_proxy_type"`
+	AppendProxyType       *bool    `toml:"append_proxy_type"`
 }
 
 type AppConfigNodePref struct {
@@ -38,9 +39,9 @@ type AppConfigNodePref struct {
 	SingboxAddClashModes  bool                                  `toml:"singbox_add_clash_modes"`
 	UDPFlag               *bool                                 `toml:"udp_flag"`
 	TCPFastOpenFlag       *bool                                 `toml:"tcp_fast_open_flag"`
-	SkipCertVerify        bool                                  `toml:"skip_cert_verify"`
+	SkipCertVerify        *bool                                 `toml:"skip_cert_verify"`
 	TLS13Flag             bool                                  `toml:"tls13_flag"`
-	FilterDeprecatedNodes bool                                  `toml:"filter_deprecated_nodes"`
+	FilterDeprecatedNodes *bool                                 `toml:"filter_deprecated_nodes"`
 	AppendSubUserinfo     bool                                  `toml:"append_sub_userinfo"`
 	SingboxRulesets       map[string]*AppConfigRulesetTransform `toml:"singbox_rulesets"`
 }
@@ -88,12 +89,21 @@ var PrivateSub *AppConfigPrivateSub
 
 func LoadConfig(path string) {
 
-	_, err := toml.DecodeFile(path, &Global)
+	bytes, err := os.ReadFile(path)
 	if err != nil {
-		slog.PanicErr(err)
+		slog.Error("read config file error:" + err.Error())
+		panic(err)
+	}
+
+	err = toml.Unmarshal(bytes, &Global)
+	if err != nil {
+		slog.Error(err.Error())
+		panic(err)
 	}
 	if Global.Common == nil || Global.Advance == nil || Global.NodePref == nil {
-		slog.Panic("config file format error")
+		errorMsg := "config file format error"
+		slog.Error(errorMsg)
+		panic(errorMsg)
 	}
 	if Global.NodePref.SingboxRulesets == nil {
 		Global.NodePref.SingboxRulesets = make(map[string]*AppConfigRulesetTransform)
@@ -101,9 +111,16 @@ func LoadConfig(path string) {
 
 	if Global.Advance.EnablePrivateSub && Global.Advance.PrivateSubConfig != "" {
 		// load private sub config
-		_, err := toml.DecodeFile(Global.Advance.PrivateSubConfig, &PrivateSub)
+		bytes, err = os.ReadFile(Global.Advance.PrivateSubConfig)
 		if err != nil {
-			slog.PanicErr(err)
+			slog.Error("read private sub config file error:" + err.Error())
+			panic(err)
+		}
+
+		err = toml.Unmarshal(bytes, &PrivateSub)
+		if err != nil {
+			slog.Error(err.Error())
+			panic(err)
 		}
 		PrivateSub.afterPrivateSubLoad()
 	}

@@ -5,15 +5,18 @@ import (
 	"github.com/821869798/easysub/routers"
 	"github.com/821869798/fankit/fanpath"
 	"github.com/gin-gonic/gin"
-	"github.com/gookit/slog"
+	"github.com/lmittmann/tint"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
 
 	loadConfig()
+	setupLog()
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -26,11 +29,11 @@ func main() {
 	}
 
 	// server run log
-	slog.Info("server run start,port:" + portStr)
+	slog.Info("server run start", slog.String("port", portStr))
 
 	err := r.Run(":" + portStr)
 	if err != nil {
-		slog.Error(err)
+		slog.Error(err.Error())
 	}
 }
 
@@ -43,20 +46,34 @@ func loadConfig() {
 		_ = fanpath.CopyFile("pref.example.toml", "pref.toml")
 		configPath = "pref.toml"
 	} else {
-		slog.Panic("no config file found")
+		slog.Error("no config file found")
 		os.Exit(1)
 	}
 	config.LoadConfig(configPath)
+
+}
+
+func setupLog() {
+
+	var logLevel slog.Level
 	switch config.Global.Advance.LogLevel {
 	case "debug":
-		slog.SetLogLevel(slog.DebugLevel)
+		logLevel = slog.LevelDebug
 	case "info":
-		slog.SetLogLevel(slog.InfoLevel)
+		logLevel = slog.LevelInfo
 	case "warn":
-		slog.SetLogLevel(slog.WarnLevel)
+		logLevel = slog.LevelWarn
 	case "error":
-		slog.SetLogLevel(slog.ErrorLevel)
+		logLevel = slog.LevelError
 	default:
-		slog.SetLogLevel(slog.InfoLevel)
+		logLevel = slog.LevelInfo
 	}
+
+	slog.SetDefault(slog.New(
+		tint.NewHandler(os.Stdout, &tint.Options{
+			Level:      logLevel,
+			TimeFormat: time.DateTime,
+			AddSource:  true,
+		}),
+	))
 }

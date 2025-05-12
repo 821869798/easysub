@@ -3,7 +3,7 @@ package define
 import (
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/modules/fetch"
-	"github.com/gookit/slog"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -58,7 +58,8 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 
 		pos := strings.Index(x.Url, "[]")
 		if pos != -1 {
-			slog.Infof("Adding rule '%s,%s'.", ruleUrl[pos+2:], ruleGroup)
+			//slog.Info(fmt.Sprintf("Adding rule '%s,%s'.", ruleUrl[pos+2:], ruleGroup))
+			slog.Info("Adding rule", slog.String(ruleUrl[pos+2:], ruleGroup))
 
 			rulesetContents[idx] = &RulesetContent{
 				RuleGroup:   ruleGroup,
@@ -85,7 +86,8 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 		go func(idx int, ruleUrl, ruleGroup, ruleUrlTyped string, ruleType RulesetType, interval int) {
 			defer wg.Done()
 
-			slog.Infof("Updating ruleset url '%s' with group '%s'.", ruleUrl, ruleGroup)
+			//slog.Info(fmt.Sprintf("Updating ruleset url '%s' with group '%s'.", ruleUrl, ruleGroup))
+			slog.Info("Updating ruleset", slog.String("url", ruleUrl), slog.String("ruleGroup", ruleGroup))
 
 			content, _ := fetch.FetchFile(ruleUrl, config.Global.Common.ProxyRuleset, config.Global.Advance.CacheRuleset, false)
 

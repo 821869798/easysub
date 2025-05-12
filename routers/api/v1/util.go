@@ -18,26 +18,14 @@ func queryArgOrDefaultBool(c *gin.Context, argName string, def bool) bool {
 	return boolValue
 }
 
-func queryArgOrDefaultTriBool(c *gin.Context, argName string, def bool) define.Tribool {
+func queryArgOrDefaultTriBool(c *gin.Context, argName string, def *bool) define.Tribool {
 	argValue := c.Query(argName)
 	if argValue == "" {
-		return define.NewTriboolFromBool(def)
+		return define.NewTriboolFromBoolPointer(def)
 	}
 	boolValue, err := strconv.ParseBool(argValue)
 	if err != nil {
-		return define.NewTriboolFromBool(def)
-	}
-	return define.NewTriboolFromBool(boolValue)
-}
-
-func queryArgOrDefaultTriBoolAdvance(c *gin.Context, argName string, def define.Tribool) define.Tribool {
-	argValue := c.Query(argName)
-	if argValue == "" {
-		return def
-	}
-	boolValue, err := strconv.ParseBool(argValue)
-	if err != nil {
-		return def
+		return define.NewTriboolFromBoolPointer(def)
 	}
 	return define.NewTriboolFromBool(boolValue)
 }

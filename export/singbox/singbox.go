@@ -7,10 +7,10 @@ import (
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/common"
-	"github.com/821869798/easysub/modules/render"
-	"github.com/gookit/slog"
+	"github.com/821869798/easysub/modules/tpl"
 	"github.com/osteele/liquid"
-	lrender "github.com/osteele/liquid/render"
+	"github.com/osteele/liquid/render"
+	"log/slog"
 	"strconv"
 	"strings"
 )
@@ -20,8 +20,8 @@ var (
 )
 
 func init() {
-	singboxTplEngine = render.CreateDefaultEngine()
-	singboxTplEngine.RegisterTag("ruleset", func(c lrender.Context) (string, error) {
+	singboxTplEngine = tpl.CreateDefaultEngine()
+	singboxTplEngine.RegisterTag("ruleset", func(c render.Context) (string, error) {
 		argString := c.TagArgs()
 		// 通过空白分割argString
 		args := strings.Fields(argString)
@@ -66,7 +66,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 	var jsonObject map[string]interface{}
 	err := json.Unmarshal([]byte(baseConf), &jsonObject)
 	if err != nil {
-		slog.Errorf("sing-box base loader failed with error: %v", err)
+		slog.Error("sing-box base loader failed with error: " + err.Error())
 	}
 
 	proxyToSingBoxInternal(nodes, jsonObject, extraProxyGroup, extraSetting)
@@ -74,7 +74,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 	if !extraSetting.EnableRuleGenerator {
 		jsBytes, err := json.Marshal(jsonObject)
 		if err != nil {
-			slog.Errorf("sing-box json marshal failed with error: %v", err)
+			slog.Error("sing-box json marshal failed with error: " + err.Error())
 			return "", err
 		}
 		return string(jsBytes), nil
@@ -84,7 +84,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 
 	jsBytes, err := json.Marshal(jsonObject)
 	if err != nil {
-		slog.Errorf("sing-box json marshal failed with error: %v", err)
+		slog.Error("sing-box json marshal failed with error: " + err.Error())
 		return "", err
 	}
 	return string(jsBytes), nil

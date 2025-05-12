@@ -5,7 +5,7 @@ import (
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/common"
-	"github.com/gookit/slog"
+	"log/slog"
 	"strings"
 
 	"github.com/821869798/easysub/modules/util"

@@ -1,4 +1,4 @@
-package render
+package tpl
 
 import (
 	"github.com/osteele/liquid"

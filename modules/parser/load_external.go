@@ -1,24 +1,24 @@
 package parser
 
 import (
-	define2 "github.com/821869798/easysub/define"
+	"github.com/821869798/easysub/define"
 	"strings"
 
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/modules/fetch"
-	"github.com/821869798/easysub/modules/render"
+	"github.com/821869798/easysub/modules/tpl"
 	"github.com/821869798/easysub/modules/util"
 	"gopkg.in/ini.v1"
 )
 
-func LoadExternalConfig(path string, ext *define2.ExternalConfig) error {
+func LoadExternalConfig(path string, ext *define.ExternalConfig) error {
 	configContent, err := fetch.FetchFile(path, config.Global.Common.ProxyConfig, config.Global.Advance.CacheConfig, false)
 	if err != nil {
 		return err
 	}
 
 	var buff string
-	if buff, err = render.RenderTemplate(configContent, ext.TplArgs); err != nil {
+	if buff, err = tpl.RenderTemplate(configContent, ext.TplArgs); err != nil {
 		return err
 	}
 	cfg, err := ini.ShadowLoad([]byte(buff))
@@ -64,11 +64,11 @@ func LoadExternalConfig(path string, ext *define2.ExternalConfig) error {
 	return nil
 }
 
-func ProxyGroupFromIni(arr []string) []*define2.ProxyGroupConfig {
-	confs := make([]*define2.ProxyGroupConfig, 0)
+func ProxyGroupFromIni(arr []string) []*define.ProxyGroupConfig {
+	confs := make([]*define.ProxyGroupConfig, 0)
 	for _, x := range arr {
 		rulesUpperBound := 0
-		conf := &define2.ProxyGroupConfig{}
+		conf := &define.ProxyGroupConfig{}
 
 		vArray := strings.Split(x, "`")
 		if len(vArray) < 3 {
@@ -80,22 +80,22 @@ func ProxyGroupFromIni(arr []string) []*define2.ProxyGroupConfig {
 		rulesUpperBound = len(vArray)
 		switch typeStr {
 		case "select":
-			conf.Type = define2.ProxyGroupType_Select
+			conf.Type = define.ProxyGroupType_Select
 		case "relay":
-			conf.Type = define2.ProxyGroupType_Relay
+			conf.Type = define.ProxyGroupType_Relay
 		case "url-test":
-			conf.Type = define2.ProxyGroupType_URLTest
+			conf.Type = define.ProxyGroupType_URLTest
 		case "fallback":
-			conf.Type = define2.ProxyGroupType_Fallback
+			conf.Type = define.ProxyGroupType_Fallback
 		case "load-balance":
-			conf.Type = define2.ProxyGroupType_LoadBalance
+			conf.Type = define.ProxyGroupType_LoadBalance
 		case "ssid":
-			conf.Type = define2.ProxyGroupType_SSID
+			conf.Type = define.ProxyGroupType_SSID
 		default:
 			continue
 		}
 
-		if conf.Type == define2.ProxyGroupType_URLTest || conf.Type == define2.ProxyGroupType_LoadBalance || conf.Type == define2.ProxyGroupType_Fallback {
+		if conf.Type == define.ProxyGroupType_URLTest || conf.Type == define.ProxyGroupType_LoadBalance || conf.Type == define.ProxyGroupType_Fallback {
 			if len(vArray) < 5 {
 				continue
 			}
@@ -133,11 +133,11 @@ func parseGroupTimes(src string, args ...*int) {
 	}
 }
 
-func RulesetFromIni(arr []string) []*define2.RulesetConfig {
-	var confs []*define2.RulesetConfig
+func RulesetFromIni(arr []string) []*define.RulesetConfig {
+	var confs []*define.RulesetConfig
 
 	for _, x := range arr {
-		conf := &define2.RulesetConfig{}
+		conf := &define.RulesetConfig{}
 		pos := strings.Index(x, ",")
 		if pos == -1 {
 			continue

@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"github.com/goccy/go-yaml"
 	"gopkg.in/ini.v1"
 	"testing"
@@ -25,7 +24,7 @@ ruleset=💬 OpenAi,https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Cla
 	t.Log(rulesets)
 	rulesets2 := customSection.Key("ruleset").ValueWithShadows()
 	for i, ruleset := range rulesets2 {
-		fmt.Printf("Ruleset %d: %s\n", i+1, ruleset)
+		t.Logf("Ruleset %d: %s\n", i+1, ruleset)
 	}
 	t.Log(customSection.KeyStrings())
 

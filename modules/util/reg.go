@@ -2,7 +2,7 @@ package util
 
 import (
 	"errors"
-	"github.com/gookit/slog"
+	"log/slog"
 	"regexp"
 )
 
@@ -36,7 +36,7 @@ func RegReplace(src, match, rep string, multiline bool) string {
 	// Compile the regex pattern.
 	re, err := regexp.Compile(modPattern)
 	if err != nil {
-		slog.Error("Regex compilation error:", err)
+		slog.Error("Regex compilation error", slog.String("error", err.Error()))
 		return src // Return original if regex is invalid
 	}
 
