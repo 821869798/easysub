@@ -73,6 +73,8 @@ type AppConfigAdvance struct {
 	FileSharePath      string `toml:"file_share_path"`
 	EnablePrivateSub   bool   `toml:"enable_private_sub"`
 	PrivateSubConfig   string `toml:"private_sub_config"`
+	WebCacheMaxFiles   int    `toml:"web_cache_max_files"`
+	WebCacheClearCount int    `toml:"web_cache_clear_count"`
 }
 
 type AppConfigTemplate struct {

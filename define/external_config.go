@@ -24,7 +24,9 @@ type ExternalConfig struct {
 }
 
 func NewExternalConfig() *ExternalConfig {
-	return &ExternalConfig{}
+	return &ExternalConfig{
+		EnableRuleGenerator: true,
+	}
 }
 
 type RegexMatchConfig struct {

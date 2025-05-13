@@ -29,7 +29,7 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 		return yaml.MarshalWithOptions(obj, yaml.Flow(true))
 	})
 
-	if !extraSetting.OverwriteOriginalRules {
+	if !extraSetting.EnableRuleGenerator {
 		bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal)
 		if err != nil {
 			return "", err
@@ -210,13 +210,16 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 
 		switch x.Type {
 		case define.ProxyGroupType_Select, define.ProxyGroupType_Relay:
+
 		case define.ProxyGroupType_LoadBalance:
 			singleGroup["strategy"] = x.StrategyStr()
+			fallthrough
 		case define.ProxyGroupType_Smart:
 		case define.ProxyGroupType_URLTest:
 			if !x.Lazy.IsUndef() {
 				singleGroup["lazy"] = x.Lazy.Bool()
 			}
+			fallthrough
 		case define.ProxyGroupType_Fallback:
 			singleGroup["url"] = x.Url
 			if x.Interval > 0 {
@@ -276,6 +279,10 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 	totalRules := 0
 
 	originRules, defined := baseRule[fieldName]
+	if originRules == nil {
+		originRules = make([]interface{}, 0)
+		baseRule[fieldName] = originRules
+	}
 	if !overwriteOriginalRules && defined {
 		rules := originRules.([]interface{})
 		for _, x := range rules {

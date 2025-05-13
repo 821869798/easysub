@@ -118,17 +118,10 @@ func ProxyGroupFromIni(arr []string) []*define.ProxyGroupConfig {
 }
 
 func parseGroupTimes(src string, args ...*int) {
-	bpos := 0
-	epos := strings.Index(src, ",")
-	for _, x := range args {
-		if x != nil {
-			*x = util.Str2Int(src[bpos:epos])
-		}
-		if epos != -1 {
-			bpos = epos + 1
-			epos = strings.Index(src[bpos:], ",")
-		} else {
-			return
+	intStrArray := strings.Split(src, ",")
+	for index, x := range intStrArray {
+		if index < len(args) {
+			*args[index] = util.Str2Int(x)
 		}
 	}
 }

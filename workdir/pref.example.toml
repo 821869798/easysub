@@ -121,3 +121,6 @@ enable_file_share = true
 file_share_path = "./file_share"
 enable_private_sub = true
 private_sub_config = "./private_sub.toml"
+web_cache_max_files = 100
+# Clear cache to target count
+web_cache_clear_count = 50

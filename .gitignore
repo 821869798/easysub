@@ -21,3 +21,4 @@
 go.work
 .idea
 workdir/pref.toml
+workdir/cache

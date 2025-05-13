@@ -43,8 +43,6 @@ func ParseNode(link string, groupID uint32, settings *ParseSettings) (*define.Pr
 		return node, nil
 	}
 
-	slog.Debug("Received Link.")
-
 	if strings.HasPrefix(link, "https://t.me/socks") || strings.HasPrefix(link, "tg://socks") {
 		linkType = define.ConfType_SOCKS
 	} else if strings.HasPrefix(link, "https://t.me/http") || strings.HasPrefix(link, "tg://http") {
