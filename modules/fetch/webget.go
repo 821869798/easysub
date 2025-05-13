@@ -80,7 +80,7 @@ func WebGet(targetURL, proxy string, cacheTTL int) (string, error) {
 			if err != nil {
 				return "", errors.New("os.ReadFile: " + err.Error())
 			}
-			slog.Info("cache hit", "file_key", cacheKey, "filename", filename)
+			slog.Info("cache hit", slog.String("url", targetURL), slog.String("filename", filename))
 			content := string(bytes)
 			return content, nil
 		}
