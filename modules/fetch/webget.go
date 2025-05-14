@@ -3,9 +3,8 @@ package fetch
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"errors"
 	"github.com/821869798/easysub/config"
-	"github.com/821869798/fankit/fanpath"
+	"golang.org/x/sync/singleflight"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,8 +22,11 @@ const (
 
 var (
 	// cacheMutex 用于保证对 cache 的并发安全访问
-	cacheMutex     sync.RWMutex
-	cacheFileCount atomic.Int32
+	cacheMutex       sync.RWMutex
+	cacheFileCount   atomic.Int32
+	clientCacheCount atomic.Int32
+	clientCache      sync.Map
+	requestGroup     singleflight.Group
 )
 
 func init() {
@@ -55,45 +57,36 @@ func WebGet(targetURL, proxy string, cacheTTL int) (string, error) {
 	filename := getMD5Hash(cacheKey)
 	filePath := filepath.Join(cacheDir, filename)
 
-	// 判断缓存文件是否存在
-	if fanpath.ExistFile(filePath) {
-		cacheMutex.RLock()
-		f, err := os.Stat(filePath)
+	cacheMutex.RLock()
+	f, err := os.Stat(filePath)
+	needNewFile := err != nil
+
+	if err == nil && time.Now().Before(f.ModTime().Add(time.Duration(cacheTTL)*time.Second)) {
+		bytes, err := os.ReadFile(filePath)
+		cacheMutex.RUnlock()
+		if err == nil {
+			slog.Info("⭐ cache hit", slog.String("url", targetURL))
+			return string(bytes), nil
+		}
+		slog.Error("Read cache file failed", slog.String("error", err.Error()), slog.String("path", filePath))
+	} else {
+		cacheMutex.RUnlock()
+	}
+
+	v, err, _ := requestGroup.Do(cacheKey, func() (interface{}, error) {
+		content, err := fetchWebDirectly(targetURL, proxy)
 		if err != nil {
-			cacheMutex.RUnlock()
-			return "", errors.New("stat file failed: " + err.Error())
+			return "", err
 		}
-		modTime := f.ModTime()
-		if time.Now().After(modTime.Add(time.Duration(cacheTTL) * time.Second)) {
-			cacheMutex.RUnlock()
-			// 缓存超时
-			content, err := fetchWebDirectly(targetURL, proxy)
-			if err != nil {
-				return "", errors.New("fetchWebDirectly: " + err.Error())
-			}
-			cacheFile(filename, content, false)
-			return content, nil
-		} else {
-			// 使用缓存文件
-			bytes, err := os.ReadFile(filePath)
-			cacheMutex.RUnlock()
-			if err != nil {
-				return "", errors.New("os.ReadFile: " + err.Error())
-			}
-			slog.Info("cache hit", slog.String("url", targetURL), slog.String("filename", filename))
-			content := string(bytes)
-			return content, nil
-		}
-	}
 
-	// 没有缓存，直接读取
-	content, err := fetchWebDirectly(targetURL, proxy)
+		cacheFile(filename, content, needNewFile)
+		return content, nil
+	})
+
 	if err != nil {
-		return "", errors.New("fetchWebDirectly: " + err.Error())
+		return "", err
 	}
-
-	cacheFile(filename, content, true)
-	return content, nil
+	return v.(string), nil
 }
 
 func cacheFile(fileName string, content string, isAdd bool) {
@@ -115,31 +108,41 @@ func cacheFile(fileName string, content string, isAdd bool) {
 	}
 }
 
-// fetchDirectly 封装了实际的网络请求逻辑
-func fetchWebDirectly(targetURL, proxy string) (string, error) {
-	client := &http.Client{}
-
-	if proxy != "" {
-		// 使用 ParseProxy 函数配置代理
-		// 假设 ParseProxy 在此包中或已导入，并返回 func(*http.Request) (*url.URL, error)
-		client.Transport = &http.Transport{
-			Proxy: ParseProxy(proxy), // 这是您原始代码中的用法
-		}
+func getHTTPClient(proxy string) *http.Client {
+	if v, ok := clientCache.Load(proxy); ok {
+		return v.(*http.Client)
 	}
 
-	response, err := client.Get(targetURL)
+	transport := &http.Transport{}
+	if proxy != "" {
+		transport.Proxy = ParseProxy(proxy)
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   10 * time.Second,
+	}
+
+	// cache many counts, need clear
+	if clientCacheCount.Load() > 100 {
+		clientCache.Clear()
+		clientCacheCount.Store(0)
+	}
+
+	clientCache.Store(proxy, client)
+	clientCacheCount.Add(1)
+	return client
+}
+
+func fetchWebDirectly(targetURL, proxy string) (string, error) {
+	response, err := getHTTPClient(proxy).Get(targetURL)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", err // 读取响应体出错
-	}
-	content := string(body)
-
-	return content, nil
+	return string(body), err
 }
 
 // fileCacheInfo 用于排序和管理缓存文件
@@ -184,6 +187,9 @@ func evictOldestFiles() {
 	// 删除多余的最旧文件
 	cacheFileClearTarget := config.Global.Advance.WebCacheClearCount
 	filesToDeleteCount := len(files) - cacheFileClearTarget
+	if filesToDeleteCount <= 0 {
+		return
+	}
 	for i := 0; i < filesToDeleteCount; i++ {
 		err := os.Remove(files[i].path)
 		if err != nil {

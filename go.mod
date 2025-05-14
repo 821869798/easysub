@@ -11,6 +11,7 @@ require (
 	github.com/lmittmann/tint v1.0.7
 	github.com/osteele/liquid v1.6.0
 	github.com/pelletier/go-toml/v2 v2.2.4
+	golang.org/x/sync v0.11.0
 	golang.org/x/sys v0.33.0
 	gopkg.in/ini.v1 v1.67.0
 )
