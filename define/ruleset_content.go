@@ -3,6 +3,7 @@ package define
 import (
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/modules/fetch"
+	"github.com/821869798/fankit/fanpath"
 	"log/slog"
 	"strings"
 	"sync"
@@ -38,11 +39,24 @@ var RulesetTypes = map[string]RulesetType{
 
 type RulesetContent struct {
 	RuleGroup      string
-	RulePath       string
+	RulePath       []string
 	RulePathTyped  string
 	RuleType       RulesetType
 	RuleContent    string
 	UpdateInterval int
+}
+
+func (r *RulesetContent) GetRuleSetName() string {
+	if len(r.RulePath) == 0 {
+		return ""
+	}
+	name := ""
+	for _, path := range r.RulePath {
+		name += fanpath.GetFileNameWithoutExt(path) + "_"
+	}
+	// trim end _
+	name = name[:len(name)-1]
+	return name
 }
 
 func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
@@ -93,7 +107,7 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 
 			rc := &RulesetContent{
 				RuleGroup:      ruleGroup,
-				RulePath:       ruleUrl,
+				RulePath:       []string{ruleUrl},
 				RulePathTyped:  ruleUrlTyped,
 				RuleType:       ruleType,
 				UpdateInterval: interval,
@@ -106,5 +120,30 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 
 	wg.Wait()
 
+	// Merge adjacent RulesetContent entries with the same RuleType
+	rulesetContents = mergeAdjacentRulesets(rulesetContents)
+
 	return rulesetContents
+}
+
+func mergeAdjacentRulesets(contents []*RulesetContent) []*RulesetContent {
+	var merged []*RulesetContent
+	for i := 0; i < len(contents); i++ {
+		current := contents[i]
+		if i > 0 && current.RulePathTyped != "" && current.RuleGroup == merged[len(merged)-1].RuleGroup {
+			lastContent := merged[len(merged)-1]
+			lastContent.RuleContent += "\n" + current.RuleContent
+			lastContent.RulePath = append(lastContent.RulePath, current.RulePath...)
+		} else {
+			merged = append(merged, &RulesetContent{
+				RuleGroup:      current.RuleGroup,
+				RulePath:       current.RulePath,
+				RulePathTyped:  current.RulePathTyped,
+				RuleType:       current.RuleType,
+				RuleContent:    current.RuleContent,
+				UpdateInterval: current.UpdateInterval,
+			})
+		}
+	}
+	return merged
 }

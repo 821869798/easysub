@@ -395,7 +395,7 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 		ruleGroup := x.RuleGroup
 		retrievedRules := x.RuleContent
 		if retrievedRules == "" {
-			slog.Warn("Failed to fetch ruleset or ruleset is empty: '" + x.RulePath + "'!")
+			slog.Warn("Failed to fetch ruleset or ruleset is empty!", slog.Any("RulePath", x.RulePath))
 			continue
 		}
 		if strings.HasPrefix(retrievedRules, "[]") {

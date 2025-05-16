@@ -25,12 +25,14 @@ func Sub(c *gin.Context) {
 	argFilterDeprecated := queryArgOrDefaultTriBool(c, "fdn", config.Global.NodePref.FilterDeprecatedNodes)
 	argUDP := queryArgOrDefaultTriBool(c, "udp", config.Global.NodePref.UDPFlag)
 	argTFO := queryArgOrDefaultTriBool(c, "tfo", config.Global.NodePref.TCPFastOpenFlag)
+	argClashRSO := queryArgOrDefaultBool(c, "clashRSO", config.Global.NodePref.ClashRuleSetOptimize)
 
 	ext := define.NewExtraSettings()
 	ext.NodePref = config.Global.NodePref
 	ext.AppendProxyType = argAppendType
 	ext.SkipCertVerify = argSkipCertVerify
 	ext.FilterDeprecated = argFilterDeprecated
+	ext.ClashRuleSetOptimize = argClashRSO
 	ext.UDP = argUDP
 	ext.TFO = argTFO
 	ext.ManagedConfigPrefix = config.Global.ManagedConfig.ManagedConfigPrefix

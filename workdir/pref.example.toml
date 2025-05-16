@@ -49,6 +49,9 @@ append_sub_userinfo = true
 clash_proxies_style = "flow"
 clash_proxy_groups_style = "block"
 
+# Optimize the speed of rule set by using the rule-providers of domain/ipcidr to correspond to the dictionary tree and/or binary search to optimize the speed of clash proxy
+clash_rule_set_optimize = true
+
 # add Clash mode to sing-box rules, and add a GLOBAL group to end of outbounds
 singbox_add_clash_modes = true
 
@@ -69,8 +72,6 @@ config_update_interval = 86400
 # If config_update_strict is set to true, Surge will require a force update after the interval.
 config_update_strict = false
 
-# Device ID to be written to rewrite scripts for some version of Quantumult X
-quanx_device_id = ""
 
 [[template.globals]]
 key = "clash.mixed_port"

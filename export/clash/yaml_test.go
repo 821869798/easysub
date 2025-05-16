@@ -11,8 +11,8 @@ type CompactStringArray []string
 type ProxyGroup struct {
 	Name    string             `yaml:"name"`
 	Proxies CompactStringArray `yaml:"proxies"`
-	Type    string             `yaml:"type"`
-	Objects []CompactObjectMap `yaml:"objets"`
+	Type    QuotedString       `yaml:"type"`
+	Objects []CompactObjectMap `yaml:"objets,flow"`
 }
 
 type Config struct {
@@ -49,14 +49,18 @@ func TestYamlMarshal(t *testing.T) {
 		return yaml.MarshalWithOptions([]string(arr), yaml.Flow(true))
 	})
 
-	compactObjectMarshal := yaml.CustomMarshaler[CompactObjectMap](func(obj CompactObjectMap) ([]byte, error) {
-		return yaml.MarshalWithOptions(obj, yaml.Flow(true))
-	})
+	//compactObjectMarshal := yaml.CustomMarshaler[CompactObjectMap](func(obj CompactObjectMap) ([]byte, error) {
+	//	return yaml.MarshalWithOptions(obj, yaml.Flow(true))
+	//})
 
-	_ = compactObjectMarshal
+	//quotedstringMarshal := yaml.CustomMarshaler[QuotedString](func(q QuotedString) ([]byte, error) {
+	//	return yaml.MarshalWithOptions(q, yaml.JSON())
+	//})
+
+	//_ = compactObjectMarshal
 	_ = compactStringArrayMarshaler
 
-	result, err := yaml.MarshalWithOptions(conf, yaml.IndentSequence(true), compactObjectMarshal)
+	result, err := yaml.MarshalWithOptions(conf, yaml.IndentSequence(true))
 	if err != nil {
 		panic(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/common"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/821869798/easysub/modules/util"
@@ -28,6 +29,9 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 	compactObjectMarshal := yaml.CustomMarshaler[CompactObjectMap](func(obj CompactObjectMap) ([]byte, error) {
 		return yaml.MarshalWithOptions(obj, yaml.Flow(true))
 	})
+	quotedStringMarshal := yaml.CustomMarshaler[QuotedString](func(obj QuotedString) ([]byte, error) {
+		return yaml.MarshalWithOptions(obj, yaml.JSON())
+	})
 
 	if !extraSetting.EnableRuleGenerator {
 		bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal)
@@ -37,9 +41,9 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 		return string(bytes), nil
 	}
 
-	outputContent := rulesetToClashStr(yamlNode, rulesetContent, extraSetting.OverwriteOriginalRules)
+	outputContent := rulesetToClashStr(yamlNode, rulesetContent, extraSetting)
 
-	bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal)
+	bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal, quotedStringMarshal)
 	if err != nil {
 		return "", err
 	}
@@ -272,21 +276,26 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 	return nil
 }
 
-func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define.RulesetContent, overwriteOriginalRules bool) string {
-	var ruleGroup, retrievedRules, strLine string
+func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define.RulesetContent, extraSetting *define.ExtraSettings) string {
+	var strLine string
+	ruleProviders := make(map[string]interface{})
 	fieldName := "rules"
-	outputContent := fieldName + ":\n"
+	outputContentWriter := &strings.Builder{}
+	outputContentWriter.WriteString(fieldName)
+	outputContentWriter.WriteString(":\n")
 	totalRules := 0
+
+	useRulesetOptimize := extraSetting.ClashRuleSetOptimize
 
 	originRules, defined := baseRule[fieldName]
 	if originRules == nil {
 		originRules = make([]interface{}, 0)
 		baseRule[fieldName] = originRules
 	}
-	if !overwriteOriginalRules && defined {
+	if !extraSetting.OverwriteOriginalRules && defined {
 		rules := originRules.([]interface{})
 		for _, x := range rules {
-			outputContent += "  - " + x.(string) + "\n"
+			outputContentWriter.WriteString("  - " + x.(string) + "\n")
 		}
 	}
 	delete(baseRule, fieldName)
@@ -295,10 +304,10 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 		if config.Global.Advance.MaxAllowedRules > 0 && totalRules > config.Global.Advance.MaxAllowedRules {
 			break
 		}
-		ruleGroup = x.RuleGroup
-		retrievedRules = x.RuleContent
+		ruleGroup := x.RuleGroup
+		retrievedRules := x.RuleContent
 		if retrievedRules == "" {
-			slog.Warn("Failed to fetch ruleset or ruleset is empty: '" + x.RulePath + "'!")
+			slog.Warn("Failed to fetch ruleset or ruleset is empty!", slog.Any("RulePath", x.RulePath))
 			continue
 		}
 		if strings.HasPrefix(retrievedRules, "[]") {
@@ -306,13 +315,18 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 			if strings.HasPrefix(strLine, "FINAL") {
 				strLine = strings.Replace(strLine, "FINAL", "MATCH", 1)
 			}
-			strLine = common.TransformRuleToCommon(strLine, ruleGroup, false)
-			outputContent += "  - " + strLine + "\n"
+			transformRuleToCommon(strLine, ruleGroup, outputContentWriter)
 			totalRules++
 			continue
 		}
 		retrievedRules = common.ConvertRuleset(retrievedRules, x.RuleType)
 
+		var rulesetOp *ruleSetOptimize
+		if useRulesetOptimize {
+			rulesetOp = &ruleSetOptimize{}
+		}
+
+		currentRuleContentWriter := &strings.Builder{}
 		scanner := bufio.NewScanner(strings.NewReader(retrievedRules))
 		for scanner.Scan() {
 			strLine := strings.TrimSpace(scanner.Text()) // 修剪空白
@@ -336,10 +350,133 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 				strLine = strLine[:strings.Index(strLine, "//")]
 				strLine = strings.TrimSpace(strLine)
 			}
-			strLine = common.TransformRuleToCommon(strLine, ruleGroup, false)
-			outputContent += "  - " + strLine + "\n"
+
+			if useRulesetOptimize {
+				transformRuleToOptimize(strLine, ruleGroup, currentRuleContentWriter, rulesetOp)
+			} else {
+				transformRuleToCommon(strLine, ruleGroup, currentRuleContentWriter)
+			}
 			totalRules++
 		}
+
+		if rulesetOp != nil {
+			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
+				// no enough count to optimize
+				currentRuleContentWriter.WriteString(rulesetOp.DomainOrigin)
+			} else {
+				realRuleName := transformRuleProvider(x, "domain", rulesetOp.DomainOptimize, ruleProviders)
+				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + "\n")
+			}
+
+			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
+				currentRuleContentWriter.WriteString(rulesetOp.IpCidrOrigin)
+			} else {
+				realRuleName := transformRuleProvider(x, "ipcidr", rulesetOp.IpCidrOptimize, ruleProviders)
+				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + ",no-resolve" + "\n")
+			}
+		}
+		outputContentWriter.WriteString(currentRuleContentWriter.String())
 	}
-	return outputContent
+	if len(ruleProviders) > 0 {
+		baseRule["rule-providers"] = ruleProviders
+	}
+	return outputContentWriter.String()
+}
+
+func transformRuleToCommon(input, group string, outputContentWriter *strings.Builder) {
+	temp := strings.Split(input, ",")
+	var builder strings.Builder
+
+	if len(temp) < 2 {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(group)
+	} else {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(temp[1])
+		builder.WriteString(",")
+		builder.WriteString(group)
+		if len(temp) > 2 && temp[2] == "no-resolve" {
+			builder.WriteString(",")
+			builder.WriteString(temp[2])
+		}
+	}
+
+	buildStr := builder.String()
+	outputContentWriter.WriteString("  - " + buildStr + "\n")
+}
+
+func transformRuleToOptimize(input, group string, outputContentWriter *strings.Builder, rulesetOp *ruleSetOptimize) {
+	temp := strings.Split(input, ",")
+
+	var builder strings.Builder
+
+	noResolve := false
+	if len(temp) < 2 {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(group)
+	} else {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(temp[1])
+		builder.WriteString(",")
+		builder.WriteString(group)
+		if len(temp) > 2 && temp[2] == "no-resolve" {
+			builder.WriteString(",")
+			builder.WriteString(temp[2])
+			noResolve = true
+		}
+	}
+
+	buildStr := "  - " + builder.String() + "\n"
+
+	switch temp[0] {
+	case "DOMAIN-SUFFIX":
+		rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString("+."+temp[1]))
+		if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
+			rulesetOp.DomainOrigin += buildStr
+		}
+		return
+	case "DOMAIN":
+		rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString(temp[1]))
+		rulesetOp.DomainOrigin += buildStr
+		if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
+			rulesetOp.DomainOrigin += buildStr
+		}
+		return
+	case "IP-CIDR", "IP-CIDR6":
+		if noResolve {
+			// 只有noResolve的值得优化
+			rulesetOp.IpCidrOptimize = append(rulesetOp.IpCidrOptimize, QuotedString(temp[1]))
+			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
+				rulesetOp.IpCidrOrigin += buildStr
+			}
+			return
+		}
+	}
+
+	outputContentWriter.WriteString(buildStr)
+}
+
+func transformRuleProvider(x *define.RulesetContent, behaviorType string, rules []QuotedString, ruleProviders map[string]interface{}) string {
+
+	ruleName := behaviorType + "_" + x.GetRuleSetName()
+	// create unique name
+	realRuleName := ruleName
+	index := 0
+	_, ok := ruleProviders[realRuleName]
+	for ok {
+		index++
+		realRuleName = ruleName + "_" + strconv.Itoa(index)
+		_, ok = ruleProviders[realRuleName]
+	}
+
+	ruleProviders[realRuleName] = map[string]interface{}{
+		"type":     "inline",
+		"behavior": behaviorType,
+		"payload":  rules,
+	}
+	return realRuleName
 }

@@ -137,29 +137,6 @@ func ConvertRuleset(content string, ruleType define.RulesetType) string {
 	}
 }
 
-func TransformRuleToCommon(input, group string, noResolveOnly bool) string {
-	temp := strings.Split(input, ",")
-	var builder strings.Builder
-
-	if len(temp) < 2 {
-		builder.WriteString(temp[0])
-		builder.WriteString(",")
-		builder.WriteString(group)
-	} else {
-		builder.WriteString(temp[0])
-		builder.WriteString(",")
-		builder.WriteString(temp[1])
-		builder.WriteString(",")
-		builder.WriteString(group)
-		if len(temp) > 2 && (!noResolveOnly || temp[2] == "no-resolve") {
-			builder.WriteString(",")
-			builder.WriteString(temp[2])
-		}
-	}
-
-	return builder.String()
-}
-
 func ProcessRemark(remark string, remarksList []string, procComma bool) string {
 	// Replace every '=' with '-' in the remark string to avoid parse errors from the clients.
 	// Surge is tested to yield an error when handling '=' in the remark string,

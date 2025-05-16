@@ -36,6 +36,7 @@ type AppConfigNodePref struct {
 	SortFlag              bool                                  `toml:"sort_flag"`
 	ClashProxiesStyle     string                                `toml:"clash_proxies_style"`
 	ClashProxyGroupsStyle string                                `toml:"clash_proxy_groups_style"`
+	ClashRuleSetOptimize  bool                                  `toml:"clash_rule_set_optimize"`
 	SingboxAddClashModes  bool                                  `toml:"singbox_add_clash_modes"`
 	UDPFlag               *bool                                 `toml:"udp_flag"`
 	TCPFastOpenFlag       *bool                                 `toml:"tcp_fast_open_flag"`
@@ -56,7 +57,6 @@ type AppConfigManagedConfig struct {
 	ManagedConfigPrefix  string `toml:"managed_config_prefix"`
 	ConfigUpdateInterval int    `toml:"config_update_interval"`
 	ConfigUpdateStrict   bool   `toml:"config_update_strict"`
-	QuanxDeviceId        string `toml:"quanx_device_id"`
 }
 
 type AppConfigAdvance struct {

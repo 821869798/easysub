@@ -13,6 +13,7 @@ type ExtraSettings struct {
 	ClashScript            bool
 	EnableRuleGenerator    bool
 	OverwriteOriginalRules bool
+	ClashRuleSetOptimize   bool
 }
 
 func NewExtraSettings() *ExtraSettings {
