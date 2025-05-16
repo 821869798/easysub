@@ -48,7 +48,7 @@ http://127.0.0.1:25500/sub?target=singbox&url=trojan://password@zxc.123456.xyz:4
 ```
 **p** 私有化订阅方式
 
-先配置和修改private_sub.toml,可以参考本项目workdir下的
+先配置和修改[private_sub.toml](workdir/private_sub.toml),可以参考本项目workdir下的文件，里面配置好了一些示例节点和url重写
 
 调用api使用
 ```ini
