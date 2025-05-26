@@ -141,6 +141,7 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 				httpOpts := make(map[string]interface{})
 				singleProxy["http-opts"] = httpOpts
 				httpOpts["path"] = []string{x.Path}
+				httpOpts["method"] = "GET"
 				httpOptsHeaders := make(map[string]interface{})
 				httpOpts["headers"] = httpOptsHeaders
 				if x.Host != "" {
@@ -160,7 +161,63 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 			case "grpc":
 				singleProxy["network"] = x.TransferProtocol
 				singleProxy["servername"] = x.Host
-				singleProxy["grpc-opts"] = map[string]interface{}{"grpc-service-name": x.Path}
+				singleProxy["grpc-opts"] = map[string]interface{}{
+					"grpc-service-name": x.Path,
+					"grpc-mode":         x.GRPCMode,
+				}
+			}
+		case define.ProxyType_VLESS:
+			singleProxy["type"] = "vless"
+			singleProxy["uuid"] = x.UserId
+			singleProxy["tls"] = x.TLSSecure
+			if !tfo.IsUndef() {
+				singleProxy["tfo"] = tfo.Bool()
+			}
+			if x.Host != "" {
+				singleProxy["servername"] = x.Host
+			}
+			if x.Flow != "" {
+				singleProxy["flow"] = x.Flow
+			}
+			if !scv.IsUndef() {
+				singleProxy["skip-cert-verify"] = scv.Bool()
+			}
+			switch x.TransferProtocol {
+			case "tcp":
+				break
+			case "ws":
+				singleProxy["network"] = x.TransferProtocol
+				wsOpts := make(map[string]interface{})
+				singleProxy["ws-opts"] = wsOpts
+				wsOpts["path"] = x.Path
+				wsOptsHeaders := make(map[string]interface{})
+				wsOpts["headers"] = wsOptsHeaders
+				if x.Host != "" {
+					wsOptsHeaders["Host"] = x.Host
+				}
+				if x.Edge != "" {
+					wsOptsHeaders["Edge"] = x.Edge
+				}
+			case "http":
+				singleProxy["network"] = x.TransferProtocol
+				httpOpts := make(map[string]interface{})
+				singleProxy["http-opts"] = httpOpts
+				httpOpts["path"] = []string{x.Path}
+				httpOpts["method"] = "GET"
+				httpOptsHeaders := make(map[string]interface{})
+				httpOpts["headers"] = httpOptsHeaders
+				if x.Host != "" {
+					httpOptsHeaders["Host"] = []string{x.Host}
+				}
+				if x.Edge != "" {
+					httpOptsHeaders["Edge"] = []string{x.Edge}
+				}
+			case "grpc":
+				singleProxy["network"] = x.TransferProtocol
+				singleProxy["grpc-opts"] = map[string]interface{}{
+					"grpc-service-name": x.Path,
+					"grpc-mode":         x.GRPCMode,
+				}
 			}
 		case define.ProxyType_Trojan:
 			singleProxy["type"] = "trojan"

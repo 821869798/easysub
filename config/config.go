@@ -112,11 +112,18 @@ func LoadConfig(path string) {
 	}
 
 	if Global.Advance.EnablePrivateSub && Global.Advance.PrivateSubConfig != "" {
-		// load private sub config
-		bytes, err = os.ReadFile(Global.Advance.PrivateSubConfig)
-		if err != nil {
-			slog.Error("read private sub config file error:" + err.Error())
-			panic(err)
+
+		privateSubEnv := os.Getenv("PRIVATE_SUB")
+		var bytes []byte
+		if privateSubEnv == "" {
+			// load private sub config
+			bytes, err = os.ReadFile(Global.Advance.PrivateSubConfig)
+			if err != nil {
+				slog.Error("read private sub config file error:" + err.Error())
+				panic(err)
+			}
+		} else {
+			bytes = []byte(privateSubEnv)
 		}
 
 		err = toml.Unmarshal(bytes, &PrivateSub)

@@ -11,6 +11,10 @@ key = "node_full"
 value = "{node_normal}|{node_share}"
 
 [[vars]]
+key = "no_rule"
+value = "file:///ACL4SSR_NoRule.ini"
+
+[[vars]]
 key = "rule_noauto"
 value = "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/config/ACL4SSR_Online_NoAuto.ini"
 
@@ -33,3 +37,11 @@ value = "sub?target=clash&url={node_full}&config={my_rule_noauto}"
 [[rewrites]]
 key = "/singbox/445566"
 value = "sub?target=singbox&url={node_full}&config={my_rule_noauto}"
+
+[[rewrites]]
+key = "/clash/778899"
+value = "sub?target=clash&url={node_full}&config={no_rule}"
+
+[[rewrites]]
+key = "/singbox/778899"
+value = "sub?target=singbox&url={node_full}&config={no_rule}"

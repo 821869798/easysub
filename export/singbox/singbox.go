@@ -151,6 +151,18 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			if len(transport) > 0 {
 				proxy["transport"] = transport
 			}
+		case define.ProxyType_VLESS:
+			addSingBoxCommonMembers(proxy, x, "vless")
+			proxy["uuid"] = x.UserId
+			if x.Flow != "" {
+				proxy["flow"] = x.Flow
+			}
+
+			transport := buildSingBoxTransport(x)
+			if len(transport) > 0 {
+				proxy["transport"] = transport
+			}
+
 		case define.ProxyType_Trojan:
 			addSingBoxCommonMembers(proxy, x, "trojan")
 			proxy["password"] = x.Password

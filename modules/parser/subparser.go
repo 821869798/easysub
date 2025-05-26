@@ -650,7 +650,7 @@ func explodeVless(vless string, node *define.Proxy) {
 }
 
 func explodeStdVless(vless string, node *define.Proxy) {
-	var add, port, id, aid, net, flow, pbk, sid, fp, mode, path, host, tls, remarks string
+	var add, port, fakeType, id, aid, net, flow, pbk, sid, fp, mode, path, host, tls, remarks string
 	var addition string
 
 	vless = vless[8:]
@@ -678,14 +678,24 @@ func explodeStdVless(vless string, node *define.Proxy) {
 
 	switch net {
 	case "tcp", "ws", "h2":
-		host = util.GetUrlArg(addition, "sni")
+		fakeType = util.GetUrlArg(addition, "headerType")
+		if strings.Contains(addition, "sni") {
+			host = util.GetUrlArg(addition, "sni")
+		} else {
+			host = util.GetUrlArg(addition, "host")
+		}
 		path = util.GetUrlArg(addition, "path")
 	case "grpc":
 		host = util.GetUrlArg(addition, "sni")
 		path = util.GetUrlArg(addition, "serviceName")
 		mode = util.GetUrlArg(addition, "mode")
 	case "quic":
-		host = util.GetUrlArg(addition, "sni")
+		fakeType = util.GetUrlArg(addition, "headerType")
+		if strings.Contains(addition, "sni") {
+			host = util.GetUrlArg(addition, "sni")
+		} else {
+			host = util.GetUrlArg(addition, "host")
+		}
 		path = util.GetUrlArg(addition, "key")
 	default:
 		return
@@ -695,5 +705,5 @@ func explodeStdVless(vless string, node *define.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, "", id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
+	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, fakeType, id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
