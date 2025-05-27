@@ -13,7 +13,40 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+const (
+	// OptimizeMinCount 使用ruleset inline模式优化要求的最小数量
+	OptimizeMinCount = 8
+)
+
+var (
+	compactObjectMarshal, quotedStringMarshal, commonStringMarshal yaml.EncodeOption
+)
+
+type QuotedString string
 type CompactObjectMap map[string]interface{}
+
+type ruleSetOptimize struct {
+	DomainOptimize []QuotedString
+	DomainOrigin   string
+	IpCidrOptimize []QuotedString
+	IpCidrOrigin   string
+}
+
+func init() {
+	compactObjectMarshal = yaml.CustomMarshaler[CompactObjectMap](func(obj CompactObjectMap) ([]byte, error) {
+		return yaml.MarshalWithOptions(obj, yaml.Flow(true), quotedStringMarshal, commonStringMarshal)
+	})
+	quotedStringMarshal = yaml.CustomMarshaler[QuotedString](func(obj QuotedString) ([]byte, error) {
+		return yaml.MarshalWithOptions(obj, yaml.JSON())
+	})
+
+	commonStringMarshal = yaml.CustomMarshaler[string](func(obj string) ([]byte, error) {
+		if strings.ContainsRune(obj, '?') {
+			return []byte(strconv.Quote(obj)), nil
+		}
+		return yaml.MarshalWithOptions(obj)
+	})
+}
 
 func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*define.RulesetContent, extraProxyGroup []*define.ProxyGroupConfig, extraSetting *define.ExtraSettings) (string, error) {
 	var yamlNode map[string]interface{}
@@ -26,13 +59,6 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 		return "", err
 	}
 
-	compactObjectMarshal := yaml.CustomMarshaler[CompactObjectMap](func(obj CompactObjectMap) ([]byte, error) {
-		return yaml.MarshalWithOptions(obj, yaml.Flow(true))
-	})
-	quotedStringMarshal := yaml.CustomMarshaler[QuotedString](func(obj QuotedString) ([]byte, error) {
-		return yaml.MarshalWithOptions(obj, yaml.JSON())
-	})
-
 	if !extraSetting.EnableRuleGenerator {
 		bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal)
 		if err != nil {
@@ -43,7 +69,7 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 
 	outputContent := rulesetToClashStr(yamlNode, rulesetContent, extraSetting)
 
-	bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal, quotedStringMarshal)
+	bytes, err := yaml.MarshalWithOptions(yamlNode, yaml.IndentSequence(true), compactObjectMarshal, quotedStringMarshal, commonStringMarshal)
 	if err != nil {
 		return "", err
 	}
