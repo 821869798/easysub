@@ -14,6 +14,7 @@ type ExtraSettings struct {
 	EnableRuleGenerator    bool
 	OverwriteOriginalRules bool
 	ClashRuleSetOptimize   bool
+	ClashGeoConvertRuleSet bool
 }
 
 func NewExtraSettings() *ExtraSettings {

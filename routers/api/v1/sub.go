@@ -26,6 +26,7 @@ func Sub(c *gin.Context) {
 	argUDP := queryArgOrDefaultTriBool(c, "udp", config.Global.NodePref.UDPFlag)
 	argTFO := queryArgOrDefaultTriBool(c, "tfo", config.Global.NodePref.TCPFastOpenFlag)
 	argClashRSO := queryArgOrDefaultBool(c, "clashRSO", config.Global.NodePref.ClashRuleSetOptimize)
+	argClashGVR := queryArgOrDefaultBool(c, "clashGVR", config.Global.NodePref.ClashGeoConvertRuleSet)
 
 	ext := define.NewExtraSettings()
 	ext.NodePref = config.Global.NodePref
@@ -33,6 +34,7 @@ func Sub(c *gin.Context) {
 	ext.SkipCertVerify = argSkipCertVerify
 	ext.FilterDeprecated = argFilterDeprecated
 	ext.ClashRuleSetOptimize = argClashRSO
+	ext.ClashGeoConvertRuleSet = argClashGVR
 	ext.UDP = argUDP
 	ext.TFO = argTFO
 	ext.ManagedConfigPrefix = config.Global.ManagedConfig.ManagedConfigPrefix

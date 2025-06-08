@@ -33,23 +33,26 @@ type AppConfigCommon struct {
 }
 
 type AppConfigNodePref struct {
-	SortFlag              bool                                  `toml:"sort_flag"`
-	ClashProxiesStyle     string                                `toml:"clash_proxies_style"`
-	ClashProxyGroupsStyle string                                `toml:"clash_proxy_groups_style"`
-	ClashRuleSetOptimize  bool                                  `toml:"clash_rule_set_optimize"`
-	SingboxAddClashModes  bool                                  `toml:"singbox_add_clash_modes"`
-	UDPFlag               *bool                                 `toml:"udp_flag"`
-	TCPFastOpenFlag       *bool                                 `toml:"tcp_fast_open_flag"`
-	SkipCertVerify        *bool                                 `toml:"skip_cert_verify"`
-	TLS13Flag             bool                                  `toml:"tls13_flag"`
-	FilterDeprecatedNodes *bool                                 `toml:"filter_deprecated_nodes"`
-	AppendSubUserinfo     bool                                  `toml:"append_sub_userinfo"`
-	SingboxRulesets       map[string]*AppConfigRulesetTransform `toml:"singbox_rulesets"`
+	SortFlag               bool                                  `toml:"sort_flag"`
+	ClashProxiesStyle      string                                `toml:"clash_proxies_style"`
+	ClashProxyGroupsStyle  string                                `toml:"clash_proxy_groups_style"`
+	ClashRuleSetOptimize   bool                                  `toml:"clash_rule_set_optimize"`
+	ClashGeoConvertRuleSet bool                                  `toml:"clash_geo_convert_ruleset"`
+	SingboxAddClashModes   bool                                  `toml:"singbox_add_clash_modes"`
+	UDPFlag                *bool                                 `toml:"udp_flag"`
+	TCPFastOpenFlag        *bool                                 `toml:"tcp_fast_open_flag"`
+	SkipCertVerify         *bool                                 `toml:"skip_cert_verify"`
+	TLS13Flag              bool                                  `toml:"tls13_flag"`
+	FilterDeprecatedNodes  *bool                                 `toml:"filter_deprecated_nodes"`
+	AppendSubUserinfo      bool                                  `toml:"append_sub_userinfo"`
+	ClashRulesets          map[string]*AppConfigRulesetTransform `toml:"clash_rulesets"`
+	SingboxRulesets        map[string]*AppConfigRulesetTransform `toml:"singbox_rulesets"`
 }
 
 type AppConfigRulesetTransform struct {
 	Name      string `toml:"name"`
 	UrlFormat string `toml:"url_format"`
+	Type      string `toml:"type"`
 }
 
 type AppConfigManagedConfig struct {
@@ -109,6 +112,9 @@ func LoadConfig(path string) {
 	}
 	if Global.NodePref.SingboxRulesets == nil {
 		Global.NodePref.SingboxRulesets = make(map[string]*AppConfigRulesetTransform)
+	}
+	if Global.NodePref.ClashRulesets == nil {
+		Global.NodePref.ClashRulesets = make(map[string]*AppConfigRulesetTransform)
 	}
 
 	if Global.Advance.EnablePrivateSub && Global.Advance.PrivateSubConfig != "" {

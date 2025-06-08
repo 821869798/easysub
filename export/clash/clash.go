@@ -398,7 +398,12 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 			if strings.HasPrefix(strLine, "FINAL") {
 				strLine = strings.Replace(strLine, "FINAL", "MATCH", 1)
 			}
-			transformRuleToCommon(strLine, ruleGroup, outputContentWriter)
+			if extraSetting.ClashGeoConvertRuleSet {
+				transformRuleConverterGeo(strLine, ruleGroup, outputContentWriter, ruleProviders)
+			} else {
+				transformRuleToCommon(strLine, ruleGroup, outputContentWriter)
+			}
+
 			totalRules++
 			continue
 		}
@@ -464,6 +469,48 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 		baseRule["rule-providers"] = ruleProviders
 	}
 	return outputContentWriter.String()
+}
+
+func transformRuleConverterGeo(input, group string, outputContentWriter *strings.Builder, ruleProviders map[string]interface{}) {
+	temp := strings.Split(input, ",")
+	var builder strings.Builder
+
+	if len(temp) < 2 {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(group)
+	} else {
+		builder.WriteString(temp[0])
+		builder.WriteString(",")
+		builder.WriteString(temp[1])
+		builder.WriteString(",")
+		builder.WriteString(group)
+		if len(temp) > 2 && temp[2] == "no-resolve" {
+			builder.WriteString(",")
+			builder.WriteString(temp[2])
+		}
+	}
+
+	typeName := strings.ToLower(temp[0])
+	rulsetConfig, ok := config.Global.NodePref.ClashRulesets[typeName]
+	if ok {
+		argName := strings.ToLower(temp[1])
+		tagName := typeName + "_" + argName
+		realUrl := strings.ReplaceAll(rulsetConfig.UrlFormat, "%s", argName)
+		ruleProviders[tagName] = map[string]interface{}{
+			"type":     "http",
+			"format":   "mrs",
+			"url":      realUrl,
+			"behavior": rulsetConfig.Type,
+			"interval": 86400 * 3, // 3 days
+			"proxy":    "DIRECT",
+			"path":     "./mrs/" + typeName + "/" + argName + ".mrs",
+		}
+		outputContentWriter.WriteString("  - RULE-SET," + tagName + "," + group + "\n")
+	} else {
+		buildStr := builder.String()
+		outputContentWriter.WriteString("  - " + buildStr + "\n")
+	}
 }
 
 func transformRuleToCommon(input, group string, outputContentWriter *strings.Builder) {
