@@ -31,7 +31,7 @@ func Sub(c *gin.Context) {
 
 	ext := define.NewExtraSettings()
 	ext.RequestHost = c.Request.Host
-	if c.Request.TLS != nil {
+	if c.Request.TLS != nil || config.GlobalEnv.SubForceHttps {
 		ext.RequestHostWithProtocol = "https://" + c.Request.Host
 	} else {
 		ext.RequestHostWithProtocol = "http://" + c.Request.Host
