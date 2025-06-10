@@ -50,13 +50,23 @@ clash_proxies_style = "flow"
 clash_proxy_groups_style = "block"
 
 # Optimize the speed of rule set by using the rule-providers of domain/ipcidr to correspond to the dictionary tree and/or binary search to optimize the speed of clash proxy
-clash_rule_set_optimize = true
+clash_ruleset_optimize = true
+
+# collect rule-providers of domain/ipcidr to http type,false is inline type
+clash_ruleset_optimize_to_http = false
+
+# convert clash geoip/geosite ruleset to clash ruleset mode
+clash_geo_convert_ruleset = true
 
 # add Clash mode to sing-box rules, and add a GLOBAL group to end of outbounds
 singbox_add_clash_modes = true
 
+[node_pref.clash_rulesets]
+geoip = { name = "geoip", type = "ipcidr", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/mrs/%s.mrs"}
+geosite = { name = "geosite", type = "domain", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/%s.mrs" }
+
 [node_pref.singbox_rulesets]
-geoip = { name = "geoip", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/%s.srs"}
+geoip = { name = "geoip", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/%s.srs"}
 geosite = { name = "geosite", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/%s.srs" }
 
 [managed_config]
@@ -123,5 +133,3 @@ file_share_path = "./file_share"
 enable_private_sub = true
 private_sub_config = "./private_sub.toml"
 web_cache_max_files = 200
-# Clear cache to target count
-web_cache_clear_count = 100

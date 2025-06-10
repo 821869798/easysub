@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/821869798/easysub/config"
+	"github.com/821869798/easysub/modules/cache"
 	"github.com/821869798/easysub/routers"
 	"github.com/821869798/fankit/fanpath"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,7 @@ import (
 func main() {
 
 	loadConfig()
+	cache.FileInit(config.Global.Advance.WebCacheMaxFiles)
 	setupLog()
 
 	gin.SetMode(gin.ReleaseMode)

@@ -14,6 +14,8 @@ func Setup(r *gin.Engine) {
 		c.String(200, "hello easysub")
 	})
 
+	r.GET("/ruleset", v1.Ruleset)
+
 	// private sub
 	if config.PrivateSub != nil {
 		r.GET("/p/*path", func(c *gin.Context) {

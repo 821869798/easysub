@@ -46,12 +46,25 @@ type RulesetContent struct {
 	UpdateInterval int
 }
 
-func (r *RulesetContent) GetRuleSetName() string {
-	if len(r.RulePath) == 0 {
+func (l *RulesetContent) GetRuleSetName() string {
+	if len(l.RulePath) == 0 {
 		return ""
 	}
 	name := ""
-	for _, path := range r.RulePath {
+	for _, path := range l.RulePath {
+		name += fanpath.GetFileNameWithoutExt(path) + "_"
+	}
+	// trim end _
+	name = name[:len(name)-1]
+	return name
+}
+
+func GetRulesetContentName(rulePath []string) string {
+	if len(rulePath) == 0 {
+		return ""
+	}
+	name := ""
+	for _, path := range rulePath {
 		name += fanpath.GetFileNameWithoutExt(path) + "_"
 	}
 	// trim end _
@@ -146,4 +159,29 @@ func mergeAdjacentRulesets(contents []*RulesetContent) []*RulesetContent {
 		}
 	}
 	return merged
+}
+
+func CreateRulesetContentFromUrls(urls []string, group string, ruleType RulesetType) *RulesetContent {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	rulesetContent := &RulesetContent{
+		RuleGroup: group,
+		RulePath:  urls,
+	}
+	for _, url := range urls {
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
+			content, _ := fetch.FetchFile(url, config.Global.Common.ProxyRuleset, config.Global.Advance.CacheRuleset, false)
+			mu.Lock()
+			rulesetContent.RuleContent += content + "\n"
+			mu.Unlock()
+		}(url)
+	}
+	wg.Wait()
+
+	// 去除结尾的换行符
+	rulesetContent.RuleContent = strings.TrimSuffix(rulesetContent.RuleContent, "\n")
+
+	return rulesetContent
 }

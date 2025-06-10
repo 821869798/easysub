@@ -31,12 +31,20 @@ key = "/singbox/112233"
 value = "sub?target=singbox&url={node_full}&config={rule_noauto}"
 
 [[rewrites]]
+key = "/stash/112233"
+value = "sub?target=clash&url={node_full}&config={rule_noauto}&clashRSOH=true"
+
+[[rewrites]]
 key = "/clash/445566"
 value = "sub?target=clash&url={node_full}&config={my_rule_noauto}"
 
 [[rewrites]]
 key = "/singbox/445566"
 value = "sub?target=singbox&url={node_full}&config={my_rule_noauto}"
+
+[[rewrites]]
+key = "/stash/445566"
+value = "sub?target=clash&url={node_full}&config={my_rule_noauto}&clashRSOH=true"
 
 [[rewrites]]
 key = "/clash/778899"

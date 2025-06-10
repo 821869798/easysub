@@ -25,16 +25,24 @@ func Sub(c *gin.Context) {
 	argFilterDeprecated := queryArgOrDefaultTriBool(c, "fdn", config.Global.NodePref.FilterDeprecatedNodes)
 	argUDP := queryArgOrDefaultTriBool(c, "udp", config.Global.NodePref.UDPFlag)
 	argTFO := queryArgOrDefaultTriBool(c, "tfo", config.Global.NodePref.TCPFastOpenFlag)
-	argClashRSO := queryArgOrDefaultBool(c, "clashRSO", config.Global.NodePref.ClashRuleSetOptimize)
+	argClashRSO := queryArgOrDefaultBool(c, "clashRSO", config.Global.NodePref.ClashRulesetOptimize)
+	argClashRSO2H := queryArgOrDefaultBool(c, "clashRSOH", config.Global.NodePref.ClashRulesetOptimizeToHttp)
 	argClashGVR := queryArgOrDefaultBool(c, "clashGVR", config.Global.NodePref.ClashGeoConvertRuleSet)
 
 	ext := define.NewExtraSettings()
+	ext.RequestHost = c.Request.Host
+	if c.Request.TLS != nil {
+		ext.RequestHostWithProtocol = "https://" + c.Request.Host
+	} else {
+		ext.RequestHostWithProtocol = "http://" + c.Request.Host
+	}
 	ext.NodePref = config.Global.NodePref
 	ext.AppendProxyType = argAppendType
 	ext.SkipCertVerify = argSkipCertVerify
 	ext.FilterDeprecated = argFilterDeprecated
 	ext.ClashRuleSetOptimize = argClashRSO
 	ext.ClashGeoConvertRuleSet = argClashGVR
+	ext.ClashRulesetOptimizeToHttp = argClashRSO2H
 	ext.UDP = argUDP
 	ext.TFO = argTFO
 	ext.ManagedConfigPrefix = config.Global.ManagedConfig.ManagedConfigPrefix
