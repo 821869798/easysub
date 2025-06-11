@@ -3,6 +3,7 @@ package routers
 import (
 	"github.com/821869798/easysub/config"
 	v1 "github.com/821869798/easysub/routers/api/v1"
+	"github.com/821869798/easysub/routers/middleware/limiter"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,7 +15,10 @@ func Setup(r *gin.Engine) {
 		c.String(200, "hello easysub")
 	})
 
-	r.GET("/ruleset", v1.Ruleset)
+	// 根据您的需求创建控制器：最大并发3，最大队列100
+	l := limiter.NewConcurrencyLimiter(3, 100)
+
+	r.GET("/ruleset", l.Middleware(), v1.Ruleset)
 
 	// private sub
 	if config.PrivateSub != nil {

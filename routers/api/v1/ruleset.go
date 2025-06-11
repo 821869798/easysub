@@ -11,8 +11,15 @@ import (
 	P "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/rules/provider"
 	"strings"
+	"sync"
 	"time"
 )
+
+// add global buffer pool
+var bufPool = sync.Pool{New: func() interface{} { return &bytes.Buffer{} }}
+
+// add buffer capacity limit
+const maxBufCap = 1 << 20 // 1MB
 
 func Ruleset(c *gin.Context) {
 	argTarget := c.Query("target")
@@ -56,24 +63,33 @@ func Ruleset(c *gin.Context) {
 			return
 		}
 		rulesetContent := define.CreateRulesetContentFromUrls(argUrls, "", define.RULESET_SURGE)
+		rulesetName := rulesetContent.GetRuleSetName()
 		content := clash.ConvertRulesetContentToText(rulesetContent, convertType)
-		var buf bytes.Buffer
-		err := provider.ConvertToMrs([]byte(content), ruleBehavior, P.TextRule, &buf)
+		buf := bufPool.Get().(*bytes.Buffer)
+		buf.Reset()
+
+		err := provider.ConvertToMrs([]byte(content), ruleBehavior, P.TextRule, buf)
 		if err != nil {
 			c.String(500, "Error converting ruleset: %v", err)
 			return
 		}
 
 		// 缓存
-		err = cache.FileSet(requestURI, buf.Bytes(), time.Duration(config.Global.Advance.CacheConfig)*time.Second)
+		data := buf.Bytes()
+		err = cache.FileSet(requestURI, data, time.Duration(config.Global.Advance.CacheConfig)*time.Second)
 		if err != nil {
 			c.String(500, "Error caching ruleset: %v", err)
 			return
 		}
 
 		c.Header("Content-Type", "application/octet-stream")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.mrs", rulesetContent.GetRuleSetName()))
-		c.Data(200, "application/octet-stream", buf.Bytes())
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.mrs", rulesetName))
+		c.Data(200, "application/octet-stream", data)
+
+		// only return buf to pool if capacity not exceeding limit
+		if buf.Cap() <= maxBufCap {
+			bufPool.Put(buf)
+		}
 	default:
 		c.String(400, "Invalid request! no target provided")
 		return
