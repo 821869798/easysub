@@ -536,10 +536,11 @@ func explodeTrojan(trojan string, node *define.Proxy) {
 		network = "ws"
 	} else if util.GetUrlArg(addition, "type") == "ws" {
 		path = util.GetUrlArg(addition, "path")
-		if strings.HasPrefix(path, "%2F") {
-			path, _ = url.QueryUnescape(path)
-		}
 		network = "ws"
+	}
+
+	if strings.HasPrefix(path, "%2F") {
+		path, _ = url.QueryUnescape(path)
 	}
 
 	if remark == "" {
