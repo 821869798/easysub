@@ -12,6 +12,8 @@ const (
 	XRAY_DEFAULT_GROUP      = "XRayProvider"
 	HYSTERIA_DEFAULT_GROUP  = "HysteriaProvider"
 	HYSTERIA2_DEFAULT_GROUP = "Hysteria2Provider"
+	TUIC_DEFAULT_GROUP      = "TuicProvider"
+	ANYTLS_DEFAULT_GROUP    = "AnyTLSProvider"
 )
 
 var (

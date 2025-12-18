@@ -2,12 +2,13 @@ package clash
 
 import (
 	"bufio"
-	"github.com/821869798/easysub/config"
-	"github.com/821869798/easysub/define"
-	"github.com/821869798/easysub/export/common"
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"github.com/821869798/easysub/config"
+	"github.com/821869798/easysub/define"
+	"github.com/821869798/easysub/export/common"
 
 	"github.com/821869798/easysub/modules/util"
 	"github.com/goccy/go-yaml"
@@ -267,6 +268,75 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 				if x.Host != "" {
 					singleProxy["ws-opts"].(map[string]interface{})["headers"] = map[string]interface{}{"Host": x.Host}
 				}
+			}
+		case define.ProxyType_TUIC:
+			singleProxy["type"] = "tuic"
+			singleProxy["uuid"] = x.UUID
+			singleProxy["password"] = x.Password
+			if x.ServerName != "" {
+				singleProxy["sni"] = x.ServerName
+			}
+			if x.HeartbeatInterval != "" {
+				singleProxy["heartbeat-interval"] = x.HeartbeatInterval
+			}
+			if x.DisableSNI == "1" || x.DisableSNI == "true" {
+				singleProxy["disable-sni"] = true
+			}
+			if x.ReduceRTT == "1" || x.ReduceRTT == "true" {
+				singleProxy["reduce-rtt"] = true
+			}
+			if x.RequestTimeout > 0 {
+				singleProxy["request-timeout"] = x.RequestTimeout
+			}
+			if x.UdpRelayMode != "" {
+				singleProxy["udp-relay-mode"] = x.UdpRelayMode
+			}
+			if x.CongestionController != "" {
+				singleProxy["congestion-controller"] = x.CongestionController
+			}
+			if x.MaxUdpRelayPacketSize > 0 {
+				singleProxy["max-udp-relay-packet-size"] = x.MaxUdpRelayPacketSize
+			}
+			if x.MaxOpenStreams > 0 {
+				singleProxy["max-open-streams"] = x.MaxOpenStreams
+			}
+			if len(x.Alpn) > 0 {
+				singleProxy["alpn"] = x.Alpn
+			}
+			if x.FastOpen.Bool() {
+				singleProxy["fast-open"] = x.FastOpen.Bool()
+			}
+			if !scv.IsUndef() {
+				singleProxy["skip-cert-verify"] = scv.Bool()
+			}
+			if !tfo.IsUndef() {
+				singleProxy["tfo"] = tfo.Bool()
+			}
+		case define.ProxyType_ANYTLS:
+			singleProxy["type"] = "anytls"
+			if x.Password != "" {
+				singleProxy["password"] = x.Password
+			}
+			if x.ServerName != "" {
+				singleProxy["sni"] = x.ServerName
+			}
+			if len(x.Alpn) > 0 {
+				singleProxy["alpn"] = x.Alpn
+			}
+			if x.Fingerprint != "" {
+				singleProxy["fingerprint"] = x.Fingerprint
+			}
+			if x.IdleSessionCheckInterval > 0 {
+				singleProxy["idle-session-check-interval"] = x.IdleSessionCheckInterval
+			}
+			if x.IdleSessionTimeout > 0 {
+				singleProxy["idle-session-timeout"] = x.IdleSessionTimeout
+			}
+			if x.MinIdleSession > 0 {
+				singleProxy["min-idle-session"] = x.MinIdleSession
+			}
+			if !scv.IsUndef() {
+				singleProxy["skip-cert-verify"] = scv.Bool()
 			}
 		default:
 		}

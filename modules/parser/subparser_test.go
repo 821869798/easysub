@@ -44,3 +44,13 @@ func TestExplodeVless(t *testing.T) {
 	}
 	t.Log(node)
 }
+
+func TestExplodeTUIC(t *testing.T) {
+	tuic := "tuic://d220a622-2226-4a9d-8c06-bd1907348705:password@example.com:8080?heartbeat_interval=10000&disable_sni=false&reduce_rtt=true&request_timeout=8000&udp_relay_mode=native&congestion_control=bbr&max_udp_relay_packet_size=1500&max_open_streams=100&sni=example.com&fast_open=true&insecure=false#TUICExample"
+	node := define.NewProxy()
+	explodeTUIC(tuic, node)
+	if node.Type == define.ProxyType_Unknown {
+		t.Error("explodeTUIC error")
+	}
+	t.Log(node)
+}

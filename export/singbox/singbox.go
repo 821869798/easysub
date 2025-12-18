@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"strconv"
+	"strings"
+
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/common"
 	"github.com/821869798/easysub/modules/tpl"
 	"github.com/osteele/liquid"
 	"github.com/osteele/liquid/render"
-	"log/slog"
-	"strconv"
-	"strings"
 )
 
 var (
@@ -171,6 +172,86 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			if len(transport) > 0 {
 				proxy["transport"] = transport
 			}
+		case define.ProxyType_TUIC:
+			addSingBoxCommonMembers(proxy, x, "tuic")
+			if x.UUID != "" {
+				proxy["uuid"] = x.UUID
+			}
+			if x.Password != "" {
+				proxy["password"] = x.Password
+			}
+			if x.HeartbeatInterval != "" {
+				proxy["heartbeat"] = x.HeartbeatInterval
+			}
+			if x.UdpRelayMode != "" {
+				proxy["udp_relay_mode"] = x.UdpRelayMode
+			}
+			if x.CongestionController != "" {
+				proxy["congestion_controller"] = x.CongestionController
+			}
+			if x.MaxUdpRelayPacketSize > 0 {
+				proxy["max_udp_relay_packet_size"] = x.MaxUdpRelayPacketSize
+			}
+			if x.MaxOpenStreams > 0 {
+				proxy["max_open_streams"] = x.MaxOpenStreams
+			}
+			if x.FastOpen.Bool() {
+				proxy["fast_open"] = x.FastOpen.Bool()
+			}
+			if x.ServerName != "" {
+				proxy["sni"] = x.ServerName
+			}
+
+			// TLS configuration
+			tls := make(map[string]interface{})
+			tls["enabled"] = true
+			if !scv.IsUndef() {
+				tls["insecure"] = scv.Bool()
+			}
+			// If fingerprint is set, force insecure to true (matching C++ line 2668-2669)
+			if x.Fingerprint != "" {
+				tls["insecure"] = true
+			}
+			if len(x.Alpn) > 0 {
+				tls["alpn"] = x.Alpn
+			}
+			proxy["tls"] = tls
+
+		case define.ProxyType_ANYTLS:
+			addSingBoxCommonMembers(proxy, x, "anytls")
+
+			if x.Password != "" {
+				proxy["password"] = x.Password
+			}
+
+			if x.ServerName != "" {
+				proxy["sni"] = x.ServerName
+			}
+
+			if x.IdleSessionCheckInterval > 0 {
+				proxy["idle_session_check_interval"] = formatSingBoxInterval(int(x.IdleSessionCheckInterval))
+			}
+			if x.IdleSessionTimeout > 0 {
+				proxy["idle_session_timeout"] = formatSingBoxInterval(int(x.IdleSessionTimeout))
+			}
+			if x.MinIdleSession > 0 {
+				proxy["min_idle_session"] = formatSingBoxInterval(int(x.MinIdleSession))
+			}
+
+			// TLS configuration
+			tls := make(map[string]interface{})
+			tls["enabled"] = true
+
+			if !scv.IsUndef() {
+				tls["insecure"] = scv.Bool()
+			}
+
+			if len(x.Alpn) > 0 {
+				tls["alpn"] = x.Alpn
+			}
+
+			proxy["tls"] = tls
+
 		case define.ProxyType_WireGuard:
 			proxy["type"] = "wireguard"
 			proxy["tag"] = x.Remark

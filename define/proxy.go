@@ -2,6 +2,7 @@ package define
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/821869798/easysub/modules/util"
@@ -20,6 +21,8 @@ const (
 	ProxyType_SOCKS5
 	ProxyType_WireGuard
 	ProxyType_VLESS
+	ProxyType_TUIC
+	ProxyType_ANYTLS
 )
 
 func (p ProxyType) String() string {
@@ -34,6 +37,8 @@ func (p ProxyType) String() string {
 		"SOCKS5",
 		"WireGuard",
 		"VLESS",
+		"TUIC",
+		"ANYTLS",
 	}[p]
 }
 
@@ -97,12 +102,90 @@ type Proxy struct {
 
 	Fingerprint string
 	ShortId     string
+
+	// TUIC fields
+	UUID                  string
+	HeartbeatInterval     string
+	DisableSNI            string
+	ReduceRTT             string
+	RequestTimeout        uint32
+	UdpRelayMode          string
+	CongestionController  string
+	MaxUdpRelayPacketSize uint32
+	MaxOpenStreams        uint32
+	FastOpen              Tribool
+	Alpn                  []string
+
+	// ANYTLS session management fields
+	IdleSessionCheckInterval uint32
+	IdleSessionTimeout       uint32
+	MinIdleSession           uint32
 }
 
 func NewProxy() *Proxy {
 	return &Proxy{
 		AllowedIPs: "0.0.0.0/0, ::/0",
 		Type:       ProxyType_Unknown,
+	}
+}
+
+func TuicProxyInit(node *Proxy, group, remarks, server, port, uuid, password, ip, heartbeatInterval, alpn, disableSNI, reduceRTT, requestTimeout, udpRelayMode, congestionController, maxUdpRelayPacketSize, maxOpenStreams, sni, fastOpen string, tfo, scv Tribool) {
+	proxyCommonInit(node, ProxyType_TUIC, group, remarks, server, port, NewTribool(), tfo, scv, NewTribool())
+	node.UUID = uuid
+	node.Password = password
+	// node.IP = ip  // C++中存在这个字段，但Go结构中没有
+	if alpn != "" {
+		node.Alpn = []string{alpn}
+	}
+	node.HeartbeatInterval = heartbeatInterval
+	node.DisableSNI = disableSNI
+	node.ReduceRTT = reduceRTT
+	if requestTimeout != "" {
+		if val, err := strconv.ParseUint(requestTimeout, 10, 32); err == nil {
+			node.RequestTimeout = uint32(val)
+		}
+	}
+	node.UdpRelayMode = udpRelayMode
+	node.CongestionController = congestionController
+	if maxUdpRelayPacketSize != "" {
+		if val, err := strconv.ParseUint(maxUdpRelayPacketSize, 10, 32); err == nil {
+			node.MaxUdpRelayPacketSize = uint32(val)
+		}
+	}
+	if maxOpenStreams != "" {
+		if val, err := strconv.ParseUint(maxOpenStreams, 10, 32); err == nil {
+			node.MaxOpenStreams = uint32(val)
+		}
+	}
+	node.ServerName = sni
+	if fastOpen != "" {
+		node.FastOpen = NewTriboolFromString(fastOpen)
+	}
+}
+
+func AnyTLSProxyInit(node *Proxy, group, remarks, server, port, password, sni, alpn, fingerprint, idleSessionCheckInterval, idleSessionTimeout, minIdleSession string, tfo, scv Tribool) {
+	proxyCommonInit(node, ProxyType_ANYTLS, group, remarks, server, port, NewTribool(), tfo, scv, NewTribool())
+	node.Password = password
+	node.ServerName = sni
+	if alpn != "" {
+		node.Alpn = []string{alpn}
+	}
+	node.Fingerprint = fingerprint
+
+	if idleSessionCheckInterval != "" {
+		if val, err := strconv.ParseUint(idleSessionCheckInterval, 10, 32); err == nil {
+			node.IdleSessionCheckInterval = uint32(val)
+		}
+	}
+	if idleSessionTimeout != "" {
+		if val, err := strconv.ParseUint(idleSessionTimeout, 10, 32); err == nil {
+			node.IdleSessionTimeout = uint32(val)
+		}
+	}
+	if minIdleSession != "" {
+		if val, err := strconv.ParseUint(minIdleSession, 10, 32); err == nil {
+			node.MinIdleSession = uint32(val)
+		}
 	}
 }
 

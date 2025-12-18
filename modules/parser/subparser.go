@@ -2,14 +2,16 @@ package parser
 
 import (
 	"encoding/json"
-	define "github.com/821869798/easysub/define"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/821869798/easysub/modules/util"
+	define "github.com/821869798/easysub/define"
+
 	"log/slog"
+
+	"github.com/821869798/easysub/modules/util"
 )
 
 func explode(link string, node *define.Proxy) {
@@ -27,6 +29,10 @@ func explode(link string, node *define.Proxy) {
 		explodeNetch(link, node)
 	} else if strings.HasPrefix(link, "trojan://") {
 		explodeTrojan(link, node)
+	} else if strings.HasPrefix(link, "tuic://") {
+		explodeTUIC(link, node)
+	} else if strings.HasPrefix(link, "anytls://") {
+		explodeAnyTLS(link, node)
 	} else if util.IsLink(link) {
 		explodeHTTPSub(link, node)
 	}
@@ -707,4 +713,144 @@ func explodeStdVless(vless string, node *define.Proxy) {
 	}
 
 	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, fakeType, id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
+}
+
+func explodeStdTuic(tuic string, node *define.Proxy) {
+	var add, port, uuid, ip, password, heartbeatInterval, disableSNI, reduceRTT, requestTimeout string
+	var udpRelayMode, congestionController, maxUdpRelayPacketSize, maxOpenStreams string
+	var alpn, sni, fastOpen, remarks, addition string
+	var tfo, scv define.Tribool
+
+	tuic = tuic[7:] // 去除 tuic://
+	pos := strings.LastIndex(tuic, "#")
+	if pos != -1 {
+		remarks, _ = url.QueryUnescape(tuic[pos+1:])
+		tuic = tuic[:pos]
+	}
+
+	pos = strings.LastIndex(tuic, "?")
+	if pos != -1 {
+		addition = tuic[pos+1:]
+		tuic = tuic[:pos]
+	}
+
+	// 支持 user:pass@host:port
+	if strings.Contains(tuic, "@") {
+		if util.RegGetMatch(tuic, `^(.*?):(.*?)@(.*?):(\d+)$`, &uuid, &password, &add, &port) != nil {
+			return
+		}
+	} else {
+		uuid = util.GetUrlArg(addition, "uuid")
+		password = util.GetUrlArg(addition, "password")
+		if uuid == "" || password == "" {
+			return
+		}
+
+		if !strings.Contains(tuic, ":") {
+			return
+		}
+
+		if util.RegGetMatch(tuic, `^(.*?):(\d+)$`, &add, &port) != nil {
+			return
+		}
+	}
+
+	// 其他参数
+	heartbeatInterval = util.GetUrlArg(addition, "heartbeat_interval")
+	disableSNI = util.GetUrlArg(addition, "disable_sni")
+	reduceRTT = util.GetUrlArg(addition, "reduce_rtt")
+	requestTimeout = util.GetUrlArg(addition, "request_timeout")
+	udpRelayMode = util.GetUrlArg(addition, "udp_relay_mode")
+	congestionController = util.GetUrlArg(addition, "congestion_control")
+	maxUdpRelayPacketSize = util.GetUrlArg(addition, "max_udp_relay_packet_size")
+	maxOpenStreams = util.GetUrlArg(addition, "max_open_streams")
+	alpn = util.GetUrlArg(addition, "alpn")
+	sni = util.GetUrlArg(addition, "sni")
+	fastOpen = util.GetUrlArg(addition, "fast_open")
+	scv = define.NewTriboolFromString(util.GetUrlArg(addition, "insecure"))
+
+	if remarks == "" {
+		remarks = add + ":" + port
+	}
+
+	define.TuicProxyInit(node, "", remarks, add, port, uuid, password, ip, heartbeatInterval, alpn, disableSNI, reduceRTT, requestTimeout, udpRelayMode, congestionController, maxUdpRelayPacketSize, maxOpenStreams, sni, fastOpen, tfo, scv)
+}
+
+func explodeTUIC(tuic string, node *define.Proxy) {
+	tuic = util.RegReplace(tuic, "(tuic)://", "tuic://", true)
+
+	// replace /? with ?
+	tuic = util.RegReplace(tuic, "/\\?", "?", true)
+	if ok, _ := regexp.MatchString("tuic://(.*?)[:](.*)", tuic); ok {
+		explodeStdTuic(tuic, node)
+		return
+	}
+}
+
+func explodeStdAnyTLS(anytls string, node *define.Proxy) {
+	var add, port, password, sni, alpn, fingerprint, remarks, addition string
+	var idleSessionCheckInterval, idleSessionTimeout, minIdleSession string
+	var tfo, scv define.Tribool
+
+	anytls = anytls[9:] // Remove "anytls://"
+	pos := strings.LastIndex(anytls, "#")
+	if pos != -1 {
+		remarks, _ = url.QueryUnescape(anytls[pos+1:])
+		anytls = anytls[:pos]
+	}
+
+	pos = strings.LastIndex(anytls, "?")
+	if pos != -1 {
+		addition = anytls[pos+1:]
+		anytls = anytls[:pos]
+	}
+
+	// Support password@host:port format
+	if strings.Contains(anytls, "@") {
+		if util.RegGetMatch(anytls, `^(.*?)@(.*?):(\d+)$`, &password, &add, &port) != nil {
+			return
+		}
+	} else {
+		password = util.GetUrlArg(addition, "password")
+		if password == "" {
+			return
+		}
+
+		if !strings.Contains(anytls, ":") {
+			return
+		}
+
+		if util.RegGetMatch(anytls, `^(.*?):(\d+)$`, &add, &port) != nil {
+			return
+		}
+	}
+
+	// Parse additional parameters
+	sni = util.GetUrlArg(addition, "peer")
+	alpn = util.GetUrlArg(addition, "alpn")
+	fingerprint, _ = url.QueryUnescape(util.GetUrlArg(addition, "hpkp"))
+	tfo = define.NewTriboolFromString(util.GetUrlArg(addition, "tfo"))
+	scv = define.NewTriboolFromString(util.GetUrlArg(addition, "insecure"))
+
+	// Session management parameters (optional)
+	idleSessionCheckInterval = util.GetUrlArg(addition, "idle_session_check_interval")
+	idleSessionTimeout = util.GetUrlArg(addition, "idle_session_timeout")
+	minIdleSession = util.GetUrlArg(addition, "min_idle_session")
+
+	if remarks == "" {
+		remarks = add + ":" + port
+	}
+
+	define.AnyTLSProxyInit(node, ANYTLS_DEFAULT_GROUP, remarks, add, port, password, sni, alpn, fingerprint, idleSessionCheckInterval, idleSessionTimeout, minIdleSession, tfo, scv)
+}
+
+func explodeAnyTLS(anytls string, node *define.Proxy) {
+	anytls = util.RegReplace(anytls, "(anytls)://", "anytls://", true)
+
+	// replace /? with ?
+	anytls = util.RegReplace(anytls, "/\\?", "?", true)
+	if ok, _ := regexp.MatchString("anytls://(.*?)[:](.*)", anytls); ok {
+		explodeStdAnyTLS(anytls, node)
+		return
+	}
 }
