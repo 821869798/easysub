@@ -187,45 +187,14 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 				proxy["udp_relay_mode"] = x.UdpRelayMode
 			}
 			if x.CongestionController != "" {
-				proxy["congestion_controller"] = x.CongestionController
+				proxy["congestion_control"] = x.CongestionController
 			}
-			if x.MaxUdpRelayPacketSize > 0 {
-				proxy["max_udp_relay_packet_size"] = x.MaxUdpRelayPacketSize
-			}
-			if x.MaxOpenStreams > 0 {
-				proxy["max_open_streams"] = x.MaxOpenStreams
-			}
-			if x.FastOpen.Bool() {
-				proxy["fast_open"] = x.FastOpen.Bool()
-			}
-			if x.ServerName != "" {
-				proxy["sni"] = x.ServerName
-			}
-
-			// TLS configuration
-			tls := make(map[string]interface{})
-			tls["enabled"] = true
-			if !scv.IsUndef() {
-				tls["insecure"] = scv.Bool()
-			}
-			// If fingerprint is set, force insecure to true (matching C++ line 2668-2669)
-			if x.Fingerprint != "" {
-				tls["insecure"] = true
-			}
-			if len(x.Alpn) > 0 {
-				tls["alpn"] = x.Alpn
-			}
-			proxy["tls"] = tls
 
 		case define.ProxyType_ANYTLS:
 			addSingBoxCommonMembers(proxy, x, "anytls")
 
 			if x.Password != "" {
 				proxy["password"] = x.Password
-			}
-
-			if x.ServerName != "" {
-				proxy["sni"] = x.ServerName
 			}
 
 			if x.IdleSessionCheckInterval > 0 {
@@ -237,21 +206,6 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			if x.MinIdleSession > 0 {
 				proxy["min_idle_session"] = formatSingBoxInterval(int(x.MinIdleSession))
 			}
-
-			// TLS configuration
-			tls := make(map[string]interface{})
-			tls["enabled"] = true
-
-			if !scv.IsUndef() {
-				tls["insecure"] = scv.Bool()
-			}
-
-			if len(x.Alpn) > 0 {
-				tls["alpn"] = x.Alpn
-			}
-
-			proxy["tls"] = tls
-
 		case define.ProxyType_WireGuard:
 			proxy["type"] = "wireguard"
 			proxy["tag"] = x.Remark
@@ -307,6 +261,11 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 				tls["server_name"] = x.Host
 			}
 			tls["insecure"] = scv.Bool()
+
+			if len(x.Alpn) > 0 {
+				tls["alpn"] = x.Alpn
+			}
+
 			proxy["tls"] = tls
 		}
 		if !udp.IsUndef() && !udp.Bool() {

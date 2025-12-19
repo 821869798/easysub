@@ -271,6 +271,7 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 			}
 		case define.ProxyType_TUIC:
 			singleProxy["type"] = "tuic"
+			singleProxy["version"] = 5
 			singleProxy["uuid"] = x.UUID
 			singleProxy["password"] = x.Password
 			if x.ServerName != "" {

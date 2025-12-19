@@ -161,6 +161,7 @@ func TuicProxyInit(node *Proxy, group, remarks, server, port, uuid, password, ip
 	if fastOpen != "" {
 		node.FastOpen = NewTriboolFromString(fastOpen)
 	}
+	node.TLSSecure = true
 }
 
 func AnyTLSProxyInit(node *Proxy, group, remarks, server, port, password, sni, alpn, fingerprint, idleSessionCheckInterval, idleSessionTimeout, minIdleSession string, tfo, scv Tribool) {
@@ -187,6 +188,7 @@ func AnyTLSProxyInit(node *Proxy, group, remarks, server, port, password, sni, a
 			node.MinIdleSession = uint32(val)
 		}
 	}
+	node.TLSSecure = true
 }
 
 func proxyCommonInit(node *Proxy, proxyType ProxyType, group, remarks, server, port string, udp, tfo, scv, tls13 Tribool) {
