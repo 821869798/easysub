@@ -1,17 +1,18 @@
 package main
 
 import (
+	"log/slog"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/modules/cache"
 	"github.com/821869798/easysub/routers"
 	"github.com/821869798/fankit/fanpath"
 	"github.com/gin-gonic/gin"
 	"github.com/lmittmann/tint"
-	"log/slog"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func main() {
@@ -40,6 +41,14 @@ func main() {
 }
 
 func loadConfig() {
+	// 优先使用环境变量 EASYSUB_PREF
+	prefEnv := os.Getenv("EASYSUB_PREF")
+	if prefEnv != "" {
+		config.LoadConfigFromContent([]byte(prefEnv))
+		return
+	}
+
+	// 从文件读取配置
 	configPath := ""
 	if fanpath.ExistFile("pref.toml") {
 		configPath = "pref.toml"

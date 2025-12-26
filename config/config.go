@@ -1,9 +1,10 @@
 package config
 
 import (
-	"github.com/pelletier/go-toml/v2"
 	"log/slog"
 	"os"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 type AppConfig struct {
@@ -94,14 +95,16 @@ var Global *AppConfig
 var PrivateSub *AppConfigPrivateSub
 
 func LoadConfig(path string) {
-
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		slog.Error("read config file error:" + err.Error())
 		panic(err)
 	}
+	LoadConfigFromContent(bytes)
+}
 
-	err = toml.Unmarshal(bytes, &Global)
+func LoadConfigFromContent(bytes []byte) {
+	err := toml.Unmarshal(bytes, &Global)
 	if err != nil {
 		slog.Error(err.Error())
 		panic(err)
@@ -120,7 +123,7 @@ func LoadConfig(path string) {
 
 	if Global.Advance.EnablePrivateSub && Global.Advance.PrivateSubConfig != "" {
 
-		privateSubEnv := os.Getenv("PRIVATE_SUB")
+		privateSubEnv := os.Getenv("EASYSUB_PRIVATE")
 		var bytes []byte
 		if privateSubEnv == "" {
 			// load private sub config
