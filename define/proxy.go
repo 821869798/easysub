@@ -23,6 +23,7 @@ const (
 	ProxyType_VLESS
 	ProxyType_TUIC
 	ProxyType_ANYTLS
+	ProxyType_Hysteria2
 )
 
 func (p ProxyType) String() string {
@@ -39,6 +40,7 @@ func (p ProxyType) String() string {
 		"VLESS",
 		"TUIC",
 		"ANYTLS",
+		"Hysteria2",
 	}[p]
 }
 
@@ -120,6 +122,15 @@ type Proxy struct {
 	IdleSessionCheckInterval uint32
 	IdleSessionTimeout       uint32
 	MinIdleSession           uint32
+
+	// Hysteria2 fields
+	Ports       string // Server ports for port hopping
+	UpSpeed     uint32 // Upload speed in Mbps
+	DownSpeed   uint32 // Download speed in Mbps
+	Ca          string // CA certificate path
+	CaStr       string // CA certificate content
+	CWND        uint32 // Congestion window
+	HopInterval uint32 // Port hop interval in seconds
 }
 
 func NewProxy() *Proxy {
@@ -356,4 +367,40 @@ func VlessProxyInit(node *Proxy, group, remarks, address, port, fakeType, id, ai
 			node.Path, _ = url.QueryUnescape(strings.TrimSpace(path))
 		}
 	}
+}
+
+func Hysteria2ProxyInit(node *Proxy, group, remarks, server, port, ports, up, down, password, obfs, obfsPassword, sni, fingerprint, alpn, ca, caStr, cwnd, hopInterval string, tfo, scv Tribool) {
+	proxyCommonInit(node, ProxyType_Hysteria2, group, remarks, server, port, NewTribool(), tfo, scv, NewTribool())
+	node.Password = password
+	node.OBFS = obfs
+	node.OBFSParam = obfsPassword
+	node.ServerName = sni
+	node.Fingerprint = fingerprint
+	node.Ports = ports
+	if alpn != "" {
+		node.Alpn = []string{alpn}
+	}
+	node.Ca = ca
+	node.CaStr = caStr
+	if up != "" {
+		if val, err := strconv.ParseUint(up, 10, 32); err == nil {
+			node.UpSpeed = uint32(val)
+		}
+	}
+	if down != "" {
+		if val, err := strconv.ParseUint(down, 10, 32); err == nil {
+			node.DownSpeed = uint32(val)
+		}
+	}
+	if cwnd != "" {
+		if val, err := strconv.ParseUint(cwnd, 10, 32); err == nil {
+			node.CWND = uint32(val)
+		}
+	}
+	if hopInterval != "" {
+		if val, err := strconv.ParseUint(hopInterval, 10, 32); err == nil {
+			node.HopInterval = uint32(val)
+		}
+	}
+	node.TLSSecure = true
 }

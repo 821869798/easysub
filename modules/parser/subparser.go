@@ -33,6 +33,8 @@ func explode(link string, node *define.Proxy) {
 		explodeTUIC(link, node)
 	} else if strings.HasPrefix(link, "anytls://") {
 		explodeAnyTLS(link, node)
+	} else if strings.HasPrefix(link, "hysteria2://") || strings.HasPrefix(link, "hy2://") {
+		explodeHysteria2(link, node)
 	} else if util.IsLink(link) {
 		explodeHTTPSub(link, node)
 	}
@@ -849,8 +851,75 @@ func explodeAnyTLS(anytls string, node *define.Proxy) {
 
 	// replace /? with ?
 	anytls = util.RegReplace(anytls, "/\\?", "?", true)
-	if ok, _ := regexp.MatchString("anytls://(.*?)[:](.*)", anytls); ok {
+	if ok, _ := regexp.MatchString("anytls://(.*?)[:](.*)" , anytls); ok {
 		explodeStdAnyTLS(anytls, node)
+		return
+	}
+}
+
+func explodeStdHysteria2(hysteria2 string, node *define.Proxy) {
+	var add, port, password, up, down, alpn, obfs, obfsPassword, remarks, sni, fingerprint string
+	var addition string
+	var scv define.Tribool
+
+	hysteria2 = hysteria2[12:] // Remove "hysteria2://"
+	pos := strings.LastIndex(hysteria2, "#")
+	if pos != -1 {
+		remarks, _ = url.QueryUnescape(hysteria2[pos+1:])
+		hysteria2 = hysteria2[:pos]
+	}
+
+	pos = strings.LastIndex(hysteria2, "?")
+	if pos != -1 {
+		addition = hysteria2[pos+1:]
+		hysteria2 = hysteria2[:pos]
+	}
+
+	// Support password@host:port format
+	if strings.Contains(hysteria2, "@") {
+		if util.RegGetMatch(hysteria2, `^(.*?)@(.*)[:]([\d]+)$`, &password, &add, &port) != nil {
+			return
+		}
+	} else {
+		password = util.GetUrlArg(addition, "password")
+		if password == "" {
+			return
+		}
+
+		if !strings.Contains(hysteria2, ":") {
+			return
+		}
+
+		if util.RegGetMatch(hysteria2, `^(.*)[:]([\d]+)$`, &add, &port) != nil {
+			return
+		}
+	}
+
+	scv = define.NewTriboolFromString(util.GetUrlArg(addition, "insecure"))
+	up = util.GetUrlArg(addition, "up")
+	down = util.GetUrlArg(addition, "down")
+	// the alpn is not supported officially yet
+	alpn = util.GetUrlArg(addition, "alpn")
+	obfs = util.GetUrlArg(addition, "obfs")
+	obfsPassword = util.GetUrlArg(addition, "obfs-password")
+	sni = util.GetUrlArg(addition, "sni")
+	fingerprint = util.GetUrlArg(addition, "pinSHA256")
+
+	if remarks == "" {
+		remarks = add + ":" + port
+	}
+
+	define.Hysteria2ProxyInit(node, HYSTERIA2_DEFAULT_GROUP, remarks, add, port, port, up, down, password, obfs, obfsPassword, sni, fingerprint, alpn, "", "", "", "", define.NewTribool(), scv)
+}
+
+func explodeHysteria2(hysteria2 string, node *define.Proxy) {
+	// Normalize protocol prefix to hysteria2://
+	hysteria2 = util.RegReplace(hysteria2, "(hysteria2|hy2)://", "hysteria2://", true)
+
+	// replace /? with ?
+	hysteria2 = util.RegReplace(hysteria2, "/\\?", "?", true)
+	if ok, _ := regexp.MatchString("hysteria2://(.*?)[:](.*)" , hysteria2); ok {
+		explodeStdHysteria2(hysteria2, node)
 		return
 	}
 }

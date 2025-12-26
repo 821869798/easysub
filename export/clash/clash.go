@@ -339,6 +339,47 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 			if !scv.IsUndef() {
 				singleProxy["skip-cert-verify"] = scv.Bool()
 			}
+		case define.ProxyType_Hysteria2:
+			singleProxy["type"] = "hysteria2"
+			if x.Password != "" {
+				singleProxy["password"] = x.Password
+			}
+			if x.Ports != "" {
+				singleProxy["ports"] = x.Ports
+			}
+			if x.UpSpeed > 0 {
+				singleProxy["up"] = x.UpSpeed
+			}
+			if x.DownSpeed > 0 {
+				singleProxy["down"] = x.DownSpeed
+			}
+			if x.OBFS != "" {
+				singleProxy["obfs"] = x.OBFS
+			}
+			if x.OBFSParam != "" {
+				singleProxy["obfs-password"] = x.OBFSParam
+			}
+			if x.ServerName != "" {
+				singleProxy["sni"] = x.ServerName
+			}
+			if len(x.Alpn) > 0 {
+				singleProxy["alpn"] = x.Alpn
+			}
+			if x.Ca != "" {
+				singleProxy["ca"] = x.Ca
+			}
+			if x.CaStr != "" {
+				singleProxy["ca-str"] = x.CaStr
+			}
+			if x.CWND > 0 {
+				singleProxy["cwnd"] = x.CWND
+			}
+			if x.HopInterval > 0 {
+				singleProxy["hop-interval"] = x.HopInterval
+			}
+			if !scv.IsUndef() {
+				singleProxy["skip-cert-verify"] = scv.Bool()
+			}
 		default:
 		}
 

@@ -206,6 +206,29 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			if x.MinIdleSession > 0 {
 				proxy["min_idle_session"] = formatSingBoxInterval(int(x.MinIdleSession))
 			}
+		case define.ProxyType_Hysteria2:
+			addSingBoxCommonMembers(proxy, x, "hysteria2")
+
+			if x.Password != "" {
+				proxy["password"] = x.Password
+			}
+			if x.UpSpeed > 0 {
+				proxy["up_mbps"] = x.UpSpeed
+			}
+			if x.DownSpeed > 0 {
+				proxy["down_mbps"] = x.DownSpeed
+			}
+			if x.OBFS != "" {
+				obfs := make(map[string]interface{})
+				obfs["type"] = x.OBFS
+				if x.OBFSParam != "" {
+					obfs["password"] = x.OBFSParam
+				}
+				proxy["obfs"] = obfs
+			}
+			if x.HopInterval > 0 {
+				proxy["hop_interval"] = formatSingBoxInterval(int(x.HopInterval))
+			}
 		case define.ProxyType_WireGuard:
 			proxy["type"] = "wireguard"
 			proxy["tag"] = x.Remark

@@ -36,8 +36,10 @@ func applyMatcher(rule string, node *define.Proxy) (bool, string) {
 		define.ProxyType_HTTPS:       "HTTPS",
 		define.ProxyType_SOCKS5:      "SOCKS5",
 		define.ProxyType_WireGuard:   "WIREGUARD",
-		//define.HY:               "HYSTERIA",
-		//define.Hysteria2:              "HYSTERIA2",
+		define.ProxyType_VLESS:       "VLESS",
+		define.ProxyType_TUIC:        "TUIC",
+		define.ProxyType_ANYTLS:      "ANYTLS",
+		define.ProxyType_Hysteria2:   "HYSTERIA2",
 	}
 
 	emptyStr := ""
