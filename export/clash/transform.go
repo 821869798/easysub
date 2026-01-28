@@ -8,9 +8,12 @@ import (
 	"strings"
 )
 
-const (
-	rulesetInterval = 86400 * 3 // 3 days
-)
+func getRulesetInterval() int {
+	if config.Global.ManagedConfig != nil && config.Global.ManagedConfig.RulesetUpdateInterval > 0 {
+		return config.Global.ManagedConfig.RulesetUpdateInterval
+	}
+	return 86400 * 5 // fallback: 5 days
+}
 
 func transformRuleConverterGeo(input, group string, outputContentWriter *strings.Builder, ruleProviders map[string]interface{}) {
 	temp := strings.Split(input, ",")
@@ -43,7 +46,7 @@ func transformRuleConverterGeo(input, group string, outputContentWriter *strings
 			"format":   "mrs",
 			"url":      realUrl,
 			"behavior": rulsetConfig.Type,
-			"interval": rulesetInterval, // 3 days
+			"interval": getRulesetInterval(),
 			"proxy":    "DIRECT",
 			"path":     "./mrs/" + typeName + "/" + argName + ".mrs",
 		}
@@ -165,7 +168,7 @@ func transformRuleProvider(x *define.RulesetContent, behaviorType string, rules 
 			"format":   "mrs",
 			"url":      rulesetUrl,
 			"behavior": behaviorType,
-			"interval": rulesetInterval, // 3 days
+			"interval": getRulesetInterval(),
 			"proxy":    "DIRECT",
 			"path":     "./mrs/ruleset/" + realRuleName + ".mrs",
 		}

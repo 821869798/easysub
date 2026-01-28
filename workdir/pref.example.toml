@@ -62,11 +62,11 @@ clash_geo_convert_ruleset = true
 singbox_add_clash_modes = true
 
 [node_pref.clash_rulesets]
-geoip = { name = "geoip", type = "ipcidr", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/mrs/%s.mrs"}
+geoip = { name = "geoip", type = "ipcidr", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/mrs/%s.mrs" }
 geosite = { name = "geosite", type = "domain", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/%s.mrs" }
 
 [node_pref.singbox_rulesets]
-geoip = { name = "geoip", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/%s.srs"}
+geoip = { name = "geoip", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/%s.srs" }
 geosite = { name = "geosite", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/%s.srs" }
 
 [managed_config]
@@ -81,6 +81,9 @@ config_update_interval = 86400
 
 # If config_update_strict is set to true, Surge will require a force update after the interval.
 config_update_strict = false
+
+# Ruleset update interval in seconds, determine how long the ruleset will be updated.
+ruleset_update_interval = 432000
 
 
 [[template.globals]]

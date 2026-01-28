@@ -58,10 +58,11 @@ type AppConfigRulesetTransform struct {
 }
 
 type AppConfigManagedConfig struct {
-	WriteManagedConfig   bool   `toml:"write_managed_config"`
-	ManagedConfigPrefix  string `toml:"managed_config_prefix"`
-	ConfigUpdateInterval int    `toml:"config_update_interval"`
-	ConfigUpdateStrict   bool   `toml:"config_update_strict"`
+	WriteManagedConfig    bool   `toml:"write_managed_config"`
+	ManagedConfigPrefix   string `toml:"managed_config_prefix"`
+	ConfigUpdateInterval  int    `toml:"config_update_interval"`
+	ConfigUpdateStrict    bool   `toml:"config_update_strict"`
+	RulesetUpdateInterval int    `toml:"ruleset_update_interval"`
 }
 
 type AppConfigAdvance struct {

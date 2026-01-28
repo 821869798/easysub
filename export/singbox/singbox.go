@@ -43,7 +43,7 @@ func init() {
 			"format":          "binary",
 			"url":             realUrl,
 			"download_detour": "DIRECT",
-			"update_interval": "3d",
+			"update_interval": "5d",
 		}
 		// json 序列化
 		rulesetJson, err := json.Marshal(rulesetObject)
