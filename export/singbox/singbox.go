@@ -20,6 +20,8 @@ var (
 	singboxTplEngine *liquid.Engine
 )
 
+const dnsProxyDetourPlaceholder = "__DNS_PROXY_DETOUR__"
+
 func init() {
 	singboxTplEngine = tpl.CreateDefaultEngine()
 	singboxTplEngine.RegisterTag("ruleset", func(c render.Context) (string, error) {
@@ -72,6 +74,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 	}
 
 	proxyToSingBoxInternal(nodes, jsonObject, extraProxyGroup, extraSetting)
+	applyDnsProxyDetour(jsonObject)
 
 	if !extraSetting.EnableRuleGenerator {
 		jsBytes, err := json.Marshal(jsonObject)
@@ -107,11 +110,6 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 		"tag":  "REJECT",
 	}
 	outbounds = append(outbounds, reject)
-	dns := map[string]interface{}{
-		"type": "dns",
-		"tag":  "dns-out",
-	}
-	outbounds = append(outbounds, dns)
 
 	jsonObject["outbounds"] = outbounds
 
@@ -370,6 +368,52 @@ func formatSingBoxInterval(interval int) string {
 	return result
 }
 
+func applyDnsProxyDetour(jsonObject map[string]interface{}) {
+	dnsObj, ok := jsonObject["dns"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	servers, ok := dnsObj["servers"].([]interface{})
+	if !ok {
+		return
+	}
+	targetDetour := selectDnsProxyDetour(jsonObject)
+	if targetDetour == "" {
+		targetDetour = "GLOBAL"
+		return
+	}
+	for _, server := range servers {
+		serverMap, ok := server.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		detour, _ := serverMap["detour"].(string)
+		if detour == dnsProxyDetourPlaceholder {
+			serverMap["detour"] = targetDetour
+		}
+	}
+}
+
+func selectDnsProxyDetour(jsonObject map[string]interface{}) string {
+	outbounds, ok := jsonObject["outbounds"].([]interface{})
+	if !ok {
+		return ""
+	}
+	for _, outbound := range outbounds {
+		outboundMap, ok := outbound.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		typeName, _ := outboundMap["type"].(string)
+		if typeName != "selector" {
+			continue
+		}
+		tag, _ := outboundMap["tag"].(string)
+		return tag
+	}
+	return ""
+}
+
 func addSingBoxCommonMembers(objectMap map[string]interface{}, x *define.Proxy, typeName string) {
 	objectMap["type"] = typeName
 	objectMap["tag"] = x.Remark
@@ -458,9 +502,14 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 		rules = append(rules, directObject)
 	}
 
+	sniff := map[string]interface{}{
+		"action": "sniff",
+	}
+	rules = append(rules, sniff)
+
 	dnsObject := map[string]interface{}{
+		"action":   "hijack-dns",
 		"protocol": "dns",
-		"outbound": "dns-out",
 	}
 	rules = append(rules, dnsObject)
 

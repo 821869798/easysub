@@ -1,130 +1,126 @@
 {% if Request.target == "singbox" %}
-    {%- assign singboxIpv6 = Request.singbox.ipv6 | bool -%}
-    {
+{%- assign singboxIpv6 = Request.singbox.ipv6 | bool -%}
+{%- assign singboxEnableTun = Request.singbox.enable_tun | default: "false" -%}
+{
     "log": {
-    "disabled": false,
-    "level": "{{ Global.singbox.log_level | default: "info" }}",
-    "timestamp": true
+        "disabled": false,
+        "level": "{{ Global.singbox.log_level | default: "info" }}",
+        "timestamp": true
     },
     "dns": {
-    "servers": [
-    {
-    "tag": "dns_proxy",
-    "address": "tls://1.1.1.1",
-    "address_resolver": "dns_resolver"
-    },
-    {
-    "tag": "dns_direct",
-    "address": "h3://dns.alidns.com/dns-query",
-    "address_resolver": "dns_resolver",
-    "detour": "DIRECT"
-    },
-    {
-    "tag": "dns_fakeip",
-    "address": "fakeip"
-    },
-    {
-    "tag": "dns_resolver",
-    "address": "223.5.5.5",
-    "detour": "DIRECT"
-    },
-    {
-    "tag": "block",
-    "address": "rcode://success"
-    }
-    ],
-    "rules": [
-    {
-    "outbound": [
-    "any"
-    ],
-    "server": "dns_resolver"
-    },
-    {
-    "rule_set": [
-    "geosite-category-ads-all"
-    ],
-    "server": "dns_block",
-    "disable_cache": true
-    },
-    {
-    "query_type": [
-    "A",
-    "AAAA"
-    ],
-    "rule_set": [
-    "geosite-geolocation-!cn"
-    ],
-    "server": "dns_fakeip"
-    },
-    {
-    "rule_set": [
-    "geosite-geolocation-!cn"
-    ],
-    "server": "dns_proxy"
-    }
-    ],
-    "final": "dns_direct",
-    "independent_cache": true,
-    "fakeip": {
-    "enabled": true,
-    {% if singboxIpv6 %}
-        "inet6_range": "fc00::/18",
-    {% endif %}
-    "inet4_range": "198.18.0.0/15"
-    }
+        "servers": [
+            {
+                "detour": "__DNS_PROXY_DETOUR__",
+                "domain_resolver": "dns_resolver",
+                "server": "1.1.1.1",
+                "tag": "dns_proxy",
+                "type": "tcp"
+            },
+            {
+                "domain_resolver": "dns_resolver",
+                "server": "dns.alidns.com",
+                "tag": "dns_direct",
+                "type": "https"
+            },
+            {
+                "server": "223.5.5.5",
+                "tag": "dns_resolver",
+                "type": "udp"
+            },
+            {
+                "inet4_range": "198.18.0.0/15",
+                {% if singboxIpv6 %}
+                "inet6_range": "fc00::/18",
+                {% endif %}
+                "tag": "dns_fakeip",
+                "type": "fakeip"
+            }
+        ],
+        "rules": [
+            {
+                "action": "predefined",
+                "rule_set": [
+                    "geosite-category-ads-all"
+                ],
+                "rcode": "REFUSED"
+            },
+            {
+                "query_type": [
+                    "A",
+                    "AAAA"
+                ],
+                "rule_set": [
+                    "geosite-geolocation-!cn"
+                ],
+                "server": "dns_fakeip"
+            },
+            {
+                "query_type": [
+                    "CNAME",
+                    "HTTPS",
+                    "SVCB"
+                ],
+                "rule_set": [
+                    "geosite-geolocation-!cn"
+                ],
+                "server": "dns_proxy"
+            }
+        ],
+        "final": "dns_direct",
+        "independent_cache": true,
+        "strategy": "ipv4_only"
     },
     "ntp": {
-    "enabled": true,
-    "server": "time.apple.com",
-    "server_port": 123,
-    "interval": "30m",
-    "detour": "DIRECT"
+        "enabled": true,
+        "server": "time.apple.com",
+        "server_port": 123,
+        "interval": "30m"
     },
     "inbounds": [
-    {
-    "type": "mixed",
-    "tag": "mixed-in",
-    {%- assign singboxAllowLAN = Global.singbox.allow_lan | bool -%}
-    {% if singboxAllowLAN %}
-        "listen": "0.0.0.0",
-    {% else %}
-        "listen": "127.0.0.1",
-    {% endif %}
-    "listen_port": {{ Global.singbox.mixed_port | default: "2080" }}
-    },
-    {
-    "type": "tun",
-    "tag": "tun-in",
-    "address": [
-    "172.19.0.1/30"{% if singboxIpv6 %},
-    "fdfe:dcba:9876::1/126"
-{%- endif %}
-    ],
-    "auto_route": true,
-    "strict_route": true,
-    "stack": "mixed",
-    "sniff": true
-    }
+        {
+            "type": "mixed",
+            "tag": "mixed-in",
+            "set_system_proxy": false,
+            {%- assign singboxAllowLAN = Global.singbox.allow_lan | bool -%}
+            {% if singboxAllowLAN %}
+            "listen": "0.0.0.0",
+            {% else %}
+            "listen": "127.0.0.1",
+            {% endif %}
+            "listen_port": {{ Global.singbox.mixed_port | default: "2080" }}
+        }{% if singboxEnableTun | bool %},
+        {
+            "type": "tun",
+            "tag": "tun-in",
+            "address": [
+                "172.19.0.1/30"{% if singboxIpv6 %},
+                "fdfe:dcba:9876::1/126"
+                {%- endif %}
+            ],
+            "auto_route": true,
+            "strict_route": true
+        }
+        {% endif %}
     ],
     "outbounds": [],
     "route": {
-    "rules": [],
-    "rule_set": [
-    {% ruleset geosite category-ads-all %},
-    {% ruleset geosite geolocation-!cn %}
-    ],
-    "auto_detect_interface": true
+        "rules": [],
+        "default_domain_resolver": "dns_resolver",
+        "rule_set": [
+            {% ruleset geosite category-ads-all %},
+            {% ruleset geosite geolocation-!cn %}
+        ],
+        "auto_detect_interface": true
     },
     "experimental": {
-    "cache_file": {
-    "enabled": true,
-    "store_fakeip": true
-    },
-    "clash_api": {
-    "external_controller": "127.0.0.1:9090",
-    "external_ui": "dashboard"
+        "cache_file": {
+            "enabled": true,
+            "store_fakeip": true
+        },
+        "clash_api": {
+            "external_controller": "127.0.0.1:9090",
+            "external_ui": "dashboard"
+        }
     }
-    }
-    }
+}
 {% endif %}

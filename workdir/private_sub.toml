@@ -1,10 +1,10 @@
 [[vars]]
 key = "node_normal"
-value = "trojan://Q65VqwMrwyJ@akk.test.xyz:443?ws=1&peer=akk.test.xyz&sni=akk.test.xyz#akk.89330595.xyz_trojan"
+value = "trojan://Q65VqwMrwyJ@akk.test.xyz:443?ws=1&peer=akk.test.xyz&sni=akk.test.xyz#akk.test.xyz_trojan"
 
 [[vars]]
 key = "node_share"
-value = "trojan://57MrwyJ@zxx.test.xyz:443?ws=1&peer=zxx.test.xyz&sni=zxx.test.xyz#zxx.89330595.xyz_trojan"
+value = "trojan://57MrwyJ@zxx.test.xyz:443?ws=1&peer=zxx.test.xyz&sni=zxx.test.xyz#zxx.test.xyz_trojan"
 
 [[vars]]
 key = "node_full"
