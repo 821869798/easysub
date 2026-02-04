@@ -12,7 +12,7 @@
             {
                 "detour": "__DNS_PROXY_DETOUR__",
                 "domain_resolver": "dns_resolver",
-                "server": "1.1.1.1",
+                "server": "one.one.one.one",
                 "tag": "dns_proxy",
                 "type": "tcp"
             },
@@ -23,9 +23,8 @@
                 "type": "https"
             },
             {
-                "server": "223.5.5.5",
                 "tag": "dns_resolver",
-                "type": "udp"
+                "type": "local"
             },
             {
                 "inet4_range": "198.18.0.0/15",
@@ -68,7 +67,7 @@
         ],
         "final": "dns_direct",
         "independent_cache": true,
-        "strategy": "ipv4_only"
+        "strategy": "prefer_ipv4"
     },
     "ntp": {
         "enabled": true,
