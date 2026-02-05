@@ -15,30 +15,42 @@ func getRulesetInterval() int {
 	return 86400 * 5 // fallback: 5 days
 }
 
+func parseRuleParts(input string) (string, string, string, bool) {
+	ruleType, rest, ok := strings.Cut(input, ",")
+	if !ok {
+		return ruleType, "", "", false
+	}
+	value, extra, ok := strings.Cut(rest, ",")
+	if !ok {
+		return ruleType, value, "", true
+	}
+	return ruleType, value, extra, true
+}
+
 func transformRuleConverterGeo(input, group string, outputContentWriter *strings.Builder, ruleProviders map[string]interface{}) {
-	temp := strings.Split(input, ",")
+	ruleType, value, extra, hasValue := parseRuleParts(input)
 	var builder strings.Builder
 
-	if len(temp) < 2 {
-		builder.WriteString(temp[0])
+	if !hasValue {
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
 		builder.WriteString(group)
 	} else {
-		builder.WriteString(temp[0])
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
-		builder.WriteString(temp[1])
+		builder.WriteString(value)
 		builder.WriteString(",")
 		builder.WriteString(group)
-		if len(temp) > 2 && temp[2] == "no-resolve" {
+		if extra == "no-resolve" {
 			builder.WriteString(",")
-			builder.WriteString(temp[2])
+			builder.WriteString(extra)
 		}
 	}
 
-	typeName := strings.ToLower(temp[0])
+	typeName := strings.ToLower(ruleType)
 	rulsetConfig, ok := config.Global.NodePref.ClashRulesets[typeName]
-	if ok {
-		argName := strings.ToLower(temp[1])
+	if ok && hasValue {
+		argName := strings.ToLower(value)
 		tagName := typeName + "_" + argName
 		realUrl := strings.ReplaceAll(rulsetConfig.UrlFormat, "%s", argName)
 		ruleProviders[tagName] = map[string]interface{}{
@@ -58,22 +70,22 @@ func transformRuleConverterGeo(input, group string, outputContentWriter *strings
 }
 
 func transformRuleToCommon(input, group string, outputContentWriter *strings.Builder) {
-	temp := strings.Split(input, ",")
+	ruleType, value, extra, hasValue := parseRuleParts(input)
 	var builder strings.Builder
 
-	if len(temp) < 2 {
-		builder.WriteString(temp[0])
+	if !hasValue {
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
 		builder.WriteString(group)
 	} else {
-		builder.WriteString(temp[0])
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
-		builder.WriteString(temp[1])
+		builder.WriteString(value)
 		builder.WriteString(",")
 		builder.WriteString(group)
-		if len(temp) > 2 && temp[2] == "no-resolve" {
+		if extra == "no-resolve" {
 			builder.WriteString(",")
-			builder.WriteString(temp[2])
+			builder.WriteString(extra)
 		}
 	}
 
@@ -82,50 +94,52 @@ func transformRuleToCommon(input, group string, outputContentWriter *strings.Bui
 }
 
 func transformRuleToOptimize(input, group string, outputContentWriter *strings.Builder, rulesetOp *ruleSetOptimize) {
-	temp := strings.Split(input, ",")
-
+	ruleType, value, extra, hasValue := parseRuleParts(input)
 	var builder strings.Builder
 
 	noResolve := false
-	if len(temp) < 2 {
-		builder.WriteString(temp[0])
+	if !hasValue {
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
 		builder.WriteString(group)
 	} else {
-		builder.WriteString(temp[0])
+		builder.WriteString(ruleType)
 		builder.WriteString(",")
-		builder.WriteString(temp[1])
+		builder.WriteString(value)
 		builder.WriteString(",")
 		builder.WriteString(group)
-		if len(temp) > 2 && temp[2] == "no-resolve" {
+		if extra == "no-resolve" {
 			builder.WriteString(",")
-			builder.WriteString(temp[2])
+			builder.WriteString(extra)
 			noResolve = true
 		}
 	}
 
 	buildStr := "  - " + builder.String() + "\n"
 
-	switch temp[0] {
+	switch ruleType {
 	case "DOMAIN-SUFFIX":
-		rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString("+."+temp[1]))
-		if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
-			rulesetOp.DomainOrigin += buildStr
+		if hasValue && value != "" {
+			rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString("+."+value))
+			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
+				rulesetOp.DomainOrigin.WriteString(buildStr)
+			}
+			return
 		}
-		return
 	case "DOMAIN":
-		rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString(temp[1]))
-		rulesetOp.DomainOrigin += buildStr
-		if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
-			rulesetOp.DomainOrigin += buildStr
+		if hasValue && value != "" {
+			rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString(value))
+			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
+				rulesetOp.DomainOrigin.WriteString(buildStr)
+			}
+			return
 		}
-		return
 	case "IP-CIDR", "IP-CIDR6":
-		if noResolve {
+		if noResolve && hasValue && value != "" {
 			// 只有noResolve的值得优化
-			rulesetOp.IpCidrOptimize = append(rulesetOp.IpCidrOptimize, QuotedString(temp[1]))
+			rulesetOp.IpCidrOptimize = append(rulesetOp.IpCidrOptimize, QuotedString(value))
 			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
-				rulesetOp.IpCidrOrigin += buildStr
+				rulesetOp.IpCidrOrigin.WriteString(buildStr)
 			}
 			return
 		}

@@ -28,9 +28,9 @@ type CompactObjectMap map[string]interface{}
 
 type ruleSetOptimize struct {
 	DomainOptimize []QuotedString
-	DomainOrigin   string
+	DomainOrigin   strings.Builder
 	IpCidrOptimize []QuotedString
-	IpCidrOrigin   string
+	IpCidrOrigin   strings.Builder
 }
 
 func init() {
@@ -535,14 +535,11 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 				continue
 			}
 
-			hasType := false
-			for _, ruleType := range common.ClashRuleTypes {
-				if strings.HasPrefix(strLine, ruleType) {
-					hasType = true
-					break
-				}
+			ruleType := strLine
+			if idx := strings.IndexByte(ruleType, ','); idx != -1 {
+				ruleType = ruleType[:idx]
 			}
-			if !hasType {
+			if !common.ClashRuleTypesMap[ruleType] {
 				continue
 			}
 
@@ -562,14 +559,14 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 		if rulesetOp != nil {
 			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
 				// no enough count to optimize
-				currentRuleContentWriter.WriteString(rulesetOp.DomainOrigin)
+				currentRuleContentWriter.WriteString(rulesetOp.DomainOrigin.String())
 			} else {
 				realRuleName := transformRuleProvider(x, "domain", rulesetOp.DomainOptimize, ruleProviders, extraSetting)
 				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + "\n")
 			}
 
 			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
-				currentRuleContentWriter.WriteString(rulesetOp.IpCidrOrigin)
+				currentRuleContentWriter.WriteString(rulesetOp.IpCidrOrigin.String())
 			} else {
 				realRuleName := transformRuleProvider(x, "ipcidr", rulesetOp.IpCidrOptimize, ruleProviders, extraSetting)
 				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + ",no-resolve" + "\n")

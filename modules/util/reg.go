@@ -4,12 +4,30 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"sync"
 )
+
+var regexpCache sync.Map
+
+func getRegexp(pattern string) (*regexp.Regexp, error) {
+	if v, ok := regexpCache.Load(pattern); ok {
+		return v.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	regexpCache.Store(pattern, re)
+	return re, nil
+}
 
 // RegGetMatch 尝试在 src 中根据给定的正则表达式 pattern 匹配，并将匹配的分组结果赋给可变参数列表中的字符串指针。
 // 如果匹配失败或分组数量与参数数量不匹配，将返回错误。
 func RegGetMatch(src, pattern string, args ...*string) error {
-	re := regexp.MustCompile(pattern)
+	re, err := getRegexp(pattern)
+	if err != nil {
+		return err
+	}
 	matches := re.FindStringSubmatch(src)
 	if matches == nil {
 		return errors.New("no match found")
@@ -34,7 +52,7 @@ func RegReplace(src, match, rep string, multiline bool) string {
 	}
 
 	// Compile the regex pattern.
-	re, err := regexp.Compile(modPattern)
+	re, err := getRegexp(modPattern)
 	if err != nil {
 		slog.Error("Regex compilation error", slog.String("error", err.Error()))
 		return src // Return original if regex is invalid
@@ -46,17 +64,18 @@ func RegReplace(src, match, rep string, multiline bool) string {
 func RegFind(src string, match string) bool {
 	// 设置正则模式，启用多行模式 (?m) 如果需要的话
 	// Go的正则默认支持UTF-8，不需要额外设置
-	re, err := regexp.Compile("(?m)" + match)
+	re, err := getRegexp("(?m)" + match)
 	if err != nil {
 		return false
 	}
 
-	// 使用 FindAllString() 来进行全局匹配
-	matches := re.FindAllString(src, -1)
-	return len(matches) > 0
+	return re.FindStringIndex(src) != nil
 }
 
 func RegMatch(src, pattern string) bool {
-	ok, _ := regexp.MatchString(pattern, src)
-	return ok
+	re, err := getRegexp(pattern)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(src)
 }

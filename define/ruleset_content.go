@@ -5,6 +5,7 @@ import (
 	"github.com/821869798/easysub/modules/fetch"
 	"github.com/821869798/fankit/fanpath"
 	"log/slog"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -50,30 +51,37 @@ func (l *RulesetContent) GetRuleSetName() string {
 	if len(l.RulePath) == 0 {
 		return ""
 	}
-	name := ""
-	for _, path := range l.RulePath {
-		name += fanpath.GetFileNameWithoutExt(path) + "_"
+	var sb strings.Builder
+	for i, path := range l.RulePath {
+		if i > 0 {
+			sb.WriteByte('_')
+		}
+		sb.WriteString(fanpath.GetFileNameWithoutExt(path))
 	}
-	// trim end _
-	name = name[:len(name)-1]
-	return name
+	return sb.String()
 }
 
 func GetRulesetContentName(rulePath []string) string {
 	if len(rulePath) == 0 {
 		return ""
 	}
-	name := ""
-	for _, path := range rulePath {
-		name += fanpath.GetFileNameWithoutExt(path) + "_"
+	var sb strings.Builder
+	for i, path := range rulePath {
+		if i > 0 {
+			sb.WriteByte('_')
+		}
+		sb.WriteString(fanpath.GetFileNameWithoutExt(path))
 	}
-	// trim end _
-	name = name[:len(name)-1]
-	return name
+	return sb.String()
 }
 
 func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 	var wg sync.WaitGroup
+	maxConcurrent := runtime.GOMAXPROCS(0) * 4
+	if maxConcurrent < 4 {
+		maxConcurrent = 4
+	}
+	sem := make(chan struct{}, maxConcurrent)
 
 	// 预先分配结果切片，保证顺序
 	// 不用加锁，每个索引位置是独立的，slice本身不会再被修改
@@ -108,10 +116,10 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 		}
 
 		wg.Add(1)
-
-		// 并发执行 FetchFile，但通过索引idx存储结果
+		sem <- struct{}{}
 		go func(idx int, ruleUrl, ruleGroup, ruleUrlTyped string, ruleType RulesetType, interval int) {
 			defer wg.Done()
+			defer func() { <-sem }()
 
 			//slog.Info(fmt.Sprintf("Updating ruleset url '%s' with group '%s'.", ruleUrl, ruleGroup))
 			slog.Info("Updating ruleset", slog.String("url", ruleUrl), slog.String("ruleGroup", ruleGroup))
@@ -145,7 +153,12 @@ func mergeAdjacentRulesets(contents []*RulesetContent) []*RulesetContent {
 		current := contents[i]
 		if i > 0 && current.RulePathTyped != "" && current.RuleGroup == merged[len(merged)-1].RuleGroup {
 			lastContent := merged[len(merged)-1]
-			lastContent.RuleContent += "\n" + current.RuleContent
+			var sb strings.Builder
+			sb.Grow(len(lastContent.RuleContent) + 1 + len(current.RuleContent))
+			sb.WriteString(lastContent.RuleContent)
+			sb.WriteByte('\n')
+			sb.WriteString(current.RuleContent)
+			lastContent.RuleContent = sb.String()
 			lastContent.RulePath = append(lastContent.RulePath, current.RulePath...)
 		} else {
 			merged = append(merged, &RulesetContent{
@@ -163,25 +176,28 @@ func mergeAdjacentRulesets(contents []*RulesetContent) []*RulesetContent {
 
 func CreateRulesetContentFromUrls(urls []string, group string, ruleType RulesetType) *RulesetContent {
 	var wg sync.WaitGroup
-	var mu sync.Mutex
+	maxConcurrent := runtime.GOMAXPROCS(0) * 4
+	if maxConcurrent < 4 {
+		maxConcurrent = 4
+	}
+	sem := make(chan struct{}, maxConcurrent)
+	results := make([]string, len(urls))
 	rulesetContent := &RulesetContent{
 		RuleGroup: group,
 		RulePath:  urls,
 	}
-	for _, url := range urls {
+	for idx, url := range urls {
 		wg.Add(1)
-		go func(url string) {
+		sem <- struct{}{}
+		go func(idx int, url string) {
 			defer wg.Done()
 			content, _ := fetch.FetchFile(url, config.Global.Common.ProxyRuleset, config.Global.Advance.CacheRuleset, false)
-			mu.Lock()
-			rulesetContent.RuleContent += content + "\n"
-			mu.Unlock()
-		}(url)
+			results[idx] = content
+			<-sem
+		}(idx, url)
 	}
 	wg.Wait()
-
-	// 去除结尾的换行符
-	rulesetContent.RuleContent = strings.TrimSuffix(rulesetContent.RuleContent, "\n")
+	rulesetContent.RuleContent = strings.Join(results, "\n")
 
 	return rulesetContent
 }

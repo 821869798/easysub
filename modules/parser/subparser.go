@@ -652,7 +652,7 @@ func explodeNetch(netch string, node *define.Proxy) {
 }
 
 func explodeVless(vless string, node *define.Proxy) {
-	if ok, _ := regexp.MatchString("vless://(.*?)@(.*)", vless); ok {
+	if util.RegMatch(vless, "vless://(.*?)@(.*)") {
 		explodeStdVless(vless, node)
 		return
 	}
