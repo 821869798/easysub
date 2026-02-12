@@ -829,6 +829,9 @@ func explodeStdAnyTLS(anytls string, node *define.Proxy) {
 
 	// Parse additional parameters
 	sni = util.GetUrlArg(addition, "peer")
+	if sni == "" {
+		sni = util.GetUrlArg(addition, "sni")
+	}
 	alpn = util.GetUrlArg(addition, "alpn")
 	fingerprint, _ = url.QueryUnescape(util.GetUrlArg(addition, "hpkp"))
 	tfo = define.NewTriboolFromString(util.GetUrlArg(addition, "tfo"))
@@ -851,7 +854,7 @@ func explodeAnyTLS(anytls string, node *define.Proxy) {
 
 	// replace /? with ?
 	anytls = util.RegReplace(anytls, "/\\?", "?", true)
-	if ok, _ := regexp.MatchString("anytls://(.*?)[:](.*)" , anytls); ok {
+	if ok, _ := regexp.MatchString("anytls://(.*?)[:](.*)", anytls); ok {
 		explodeStdAnyTLS(anytls, node)
 		return
 	}
@@ -918,7 +921,7 @@ func explodeHysteria2(hysteria2 string, node *define.Proxy) {
 
 	// replace /? with ?
 	hysteria2 = util.RegReplace(hysteria2, "/\\?", "?", true)
-	if ok, _ := regexp.MatchString("hysteria2://(.*?)[:](.*)" , hysteria2); ok {
+	if ok, _ := regexp.MatchString("hysteria2://(.*?)[:](.*)", hysteria2); ok {
 		explodeStdHysteria2(hysteria2, node)
 		return
 	}
