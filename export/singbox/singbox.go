@@ -163,6 +163,43 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 				proxy["transport"] = transport
 			}
 
+			if x.TLSSecure {
+				tls := make(map[string]interface{})
+				tls["enabled"] = true
+				if x.ServerName != "" {
+					tls["server_name"] = x.ServerName
+				} else if x.Host != "" {
+					tls["server_name"] = x.Host
+				}
+				tls["insecure"] = scv.Bool()
+
+				if len(x.Alpn) > 0 {
+					tls["alpn"] = x.Alpn
+				}
+
+				if x.PublicKey != "" {
+					reality := make(map[string]interface{})
+					reality["enabled"] = true
+					reality["public_key"] = x.PublicKey
+					reality["short_id"] = x.ShortId
+					tls["reality"] = reality
+
+					utls := make(map[string]interface{})
+					utls["enabled"] = true
+					if x.ClientFingerprint != "" {
+						utls["fingerprint"] = x.ClientFingerprint
+					} else if x.Fingerprint != "" {
+						utls["fingerprint"] = x.Fingerprint
+					} else {
+						fingerprints := []string{"chrome", "firefox", "safari", "ios", "edge", "qq"}
+						utls["fingerprint"] = fingerprints[0]
+					}
+					tls["utls"] = utls
+				}
+
+				proxy["tls"] = tls
+			}
+
 		case define.ProxyType_Trojan:
 			addSingBoxCommonMembers(proxy, x, "trojan")
 			proxy["password"] = x.Password
@@ -273,7 +310,7 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			proxy["password"] = x.Password
 		default:
 		}
-		if x.TLSSecure {
+		if x.TLSSecure && x.Type != define.ProxyType_VLESS {
 			tls := make(map[string]interface{})
 			tls["enabled"] = true
 			if x.ServerName != "" {

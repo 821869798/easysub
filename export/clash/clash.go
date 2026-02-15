@@ -246,6 +246,22 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 					"grpc-mode":         x.GRPCMode,
 				}
 			}
+			if x.Fingerprint != "" {
+				singleProxy["fingerprint"] = x.Fingerprint
+			}
+			if x.PublicKey != "" {
+				singleProxy["reality-opts"] = map[string]interface{}{
+					"public-key": x.PublicKey,
+					"short-id":   x.ShortId,
+				}
+				if x.ClientFingerprint != "" {
+					singleProxy["client-fingerprint"] = x.ClientFingerprint
+				} else if x.Fingerprint != "" {
+					singleProxy["client-fingerprint"] = x.Fingerprint
+				} else {
+					singleProxy["client-fingerprint"] = "random"
+				}
+			}
 		case define.ProxyType_Trojan:
 			singleProxy["type"] = "trojan"
 			singleProxy["password"] = x.Password

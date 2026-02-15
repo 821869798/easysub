@@ -22,3 +22,4 @@ go.work
 .idea
 workdir/pref.toml
 workdir/cache
+subconverter_src/

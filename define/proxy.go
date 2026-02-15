@@ -102,8 +102,9 @@ type Proxy struct {
 	TestUrl      string
 	ClientId     string
 
-	Fingerprint string
-	ShortId     string
+	Fingerprint        string
+	ShortId            string
+	ClientFingerprint  string
 
 	// TUIC fields
 	UUID                  string
@@ -310,7 +311,7 @@ func WireGuardProxyInit(node *Proxy, group, remarks, server, port, selfIp, selfI
 	node.ClientId = clientId
 }
 
-func VlessProxyInit(node *Proxy, group, remarks, address, port, fakeType, id, aid, net, cipher, flow, mode, path, host, edge, tls, pbk, sid, fp string, udp, tfo, scv, tls13 Tribool) {
+func VlessProxyInit(node *Proxy, group, remarks, address, port, fakeType, id, aid, net, cipher, flow, mode, path, host, edge, tls, pbk, sid, fp, clientFingerprint string, udp, tfo, scv, tls13 Tribool) {
 	proxyCommonInit(node, ProxyType_VLESS, group, remarks, address, port, udp, tfo, scv, tls13)
 	if id == "" {
 		node.UserId = "00000000-0000-0000-0000-000000000000"
@@ -333,6 +334,7 @@ func VlessProxyInit(node *Proxy, group, remarks, address, port, fakeType, id, ai
 	node.PublicKey = pbk
 	node.ShortId = sid
 	node.Fingerprint = fp
+	node.ClientFingerprint = clientFingerprint
 
 	switch net {
 	case "grpc":

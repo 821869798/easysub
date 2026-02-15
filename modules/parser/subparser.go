@@ -714,7 +714,7 @@ func explodeStdVless(vless string, node *define.Proxy) {
 		remarks = add + ":" + port
 	}
 
-	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, fakeType, id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
+	define.VlessProxyInit(node, XRAY_DEFAULT_GROUP, remarks, add, port, fakeType, id, aid, net, "auto", flow, mode, path, host, "", tls, pbk, sid, "", fp, define.NewTribool(), define.NewTribool(), define.NewTribool(), define.NewTribool())
 }
 
 func explodeStdTuic(tuic string, node *define.Proxy) {
