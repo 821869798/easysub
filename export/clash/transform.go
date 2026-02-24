@@ -1,11 +1,12 @@
 package clash
 
 import (
-	"github.com/821869798/easysub/config"
-	"github.com/821869798/easysub/define"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/821869798/easysub/config"
+	"github.com/821869798/easysub/define"
 )
 
 func getRulesetInterval() int {
@@ -27,25 +28,25 @@ func parseRuleParts(input string) (string, string, string, bool) {
 	return ruleType, value, extra, true
 }
 
+// writeRuleLine writes a formatted rule line directly into the writer, avoiding intermediate allocations.
+// Format: "  - RULETYPE,value,group[,no-resolve]\n" or "  - RULETYPE,group\n"
+func writeRuleLine(w *strings.Builder, ruleType, value, extra, group string, hasValue bool) {
+	w.WriteString("  - ")
+	w.WriteString(ruleType)
+	w.WriteString(",")
+	if hasValue {
+		w.WriteString(value)
+		w.WriteString(",")
+	}
+	w.WriteString(group)
+	if extra == "no-resolve" {
+		w.WriteString(",no-resolve")
+	}
+	w.WriteByte('\n')
+}
+
 func transformRuleConverterGeo(input, group string, outputContentWriter *strings.Builder, ruleProviders map[string]interface{}) {
 	ruleType, value, extra, hasValue := parseRuleParts(input)
-	var builder strings.Builder
-
-	if !hasValue {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(group)
-	} else {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(value)
-		builder.WriteString(",")
-		builder.WriteString(group)
-		if extra == "no-resolve" {
-			builder.WriteString(",")
-			builder.WriteString(extra)
-		}
-	}
 
 	typeName := strings.ToLower(ruleType)
 	rulsetConfig, ok := config.Global.NodePref.ClashRulesets[typeName]
@@ -62,67 +63,32 @@ func transformRuleConverterGeo(input, group string, outputContentWriter *strings
 			"proxy":    "DIRECT",
 			"path":     "./mrs/" + typeName + "/" + argName + ".mrs",
 		}
-		outputContentWriter.WriteString("  - RULE-SET," + tagName + "," + group + "\n")
+		outputContentWriter.WriteString("  - RULE-SET,")
+		outputContentWriter.WriteString(tagName)
+		outputContentWriter.WriteByte(',')
+		outputContentWriter.WriteString(group)
+		outputContentWriter.WriteByte('\n')
 	} else {
-		buildStr := builder.String()
-		outputContentWriter.WriteString("  - " + buildStr + "\n")
+		writeRuleLine(outputContentWriter, ruleType, value, extra, group, hasValue)
 	}
 }
 
 func transformRuleToCommon(input, group string, outputContentWriter *strings.Builder) {
 	ruleType, value, extra, hasValue := parseRuleParts(input)
-	var builder strings.Builder
-
-	if !hasValue {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(group)
-	} else {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(value)
-		builder.WriteString(",")
-		builder.WriteString(group)
-		if extra == "no-resolve" {
-			builder.WriteString(",")
-			builder.WriteString(extra)
-		}
-	}
-
-	buildStr := builder.String()
-	outputContentWriter.WriteString("  - " + buildStr + "\n")
+	writeRuleLine(outputContentWriter, ruleType, value, extra, group, hasValue)
 }
 
 func transformRuleToOptimize(input, group string, outputContentWriter *strings.Builder, rulesetOp *ruleSetOptimize) {
 	ruleType, value, extra, hasValue := parseRuleParts(input)
-	var builder strings.Builder
 
-	noResolve := false
-	if !hasValue {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(group)
-	} else {
-		builder.WriteString(ruleType)
-		builder.WriteString(",")
-		builder.WriteString(value)
-		builder.WriteString(",")
-		builder.WriteString(group)
-		if extra == "no-resolve" {
-			builder.WriteString(",")
-			builder.WriteString(extra)
-			noResolve = true
-		}
-	}
-
-	buildStr := "  - " + builder.String() + "\n"
+	noResolve := extra == "no-resolve"
 
 	switch ruleType {
 	case "DOMAIN-SUFFIX":
 		if hasValue && value != "" {
 			rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString("+."+value))
 			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
-				rulesetOp.DomainOrigin.WriteString(buildStr)
+				writeRuleLine(&rulesetOp.DomainOrigin, ruleType, value, extra, group, hasValue)
 			}
 			return
 		}
@@ -130,7 +96,7 @@ func transformRuleToOptimize(input, group string, outputContentWriter *strings.B
 		if hasValue && value != "" {
 			rulesetOp.DomainOptimize = append(rulesetOp.DomainOptimize, QuotedString(value))
 			if len(rulesetOp.DomainOptimize) < OptimizeMinCount {
-				rulesetOp.DomainOrigin.WriteString(buildStr)
+				writeRuleLine(&rulesetOp.DomainOrigin, ruleType, value, extra, group, hasValue)
 			}
 			return
 		}
@@ -139,14 +105,14 @@ func transformRuleToOptimize(input, group string, outputContentWriter *strings.B
 			// 只有noResolve的值得优化
 			rulesetOp.IpCidrOptimize = append(rulesetOp.IpCidrOptimize, QuotedString(value))
 			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
-				rulesetOp.IpCidrOrigin.WriteString(buildStr)
+				writeRuleLine(&rulesetOp.IpCidrOrigin, ruleType, value, extra, group, hasValue)
 			}
 			return
 		}
 	}
 
 	if outputContentWriter != nil {
-		outputContentWriter.WriteString(buildStr)
+		writeRuleLine(outputContentWriter, ruleType, value, extra, group, hasValue)
 	}
 }
 
@@ -167,11 +133,13 @@ func transformRuleProvider(x *define.RulesetContent, behaviorType string, rules 
 	if extraSetting.ClashRulesetOptimizeToHttp {
 		// 得到最终的url,
 		var sb strings.Builder
-		sb.WriteString(extraSetting.RequestHostWithProtocol + "/ruleset?target=clash&")
-		sb.WriteString("behavior=" + behaviorType + "&" + "url=")
+		sb.WriteString(extraSetting.RequestHostWithProtocol)
+		sb.WriteString("/ruleset?target=clash&behavior=")
+		sb.WriteString(behaviorType)
+		sb.WriteString("&url=")
 		for i, path := range x.RulePath {
 			if i > 0 {
-				sb.WriteString("|")
+				sb.WriteByte('|')
 			}
 			// url encode
 			sb.WriteString(url.QueryEscape(path))
@@ -189,8 +157,14 @@ func transformRuleProvider(x *define.RulesetContent, behaviorType string, rules 
 	} else {
 		ruleProvider = map[string]interface{}{
 			"type":     "inline",
+			"format":   "text",
 			"behavior": behaviorType,
 			"payload":  rules,
+		}
+
+		if strings.Contains(extraSetting.UserAgent, "Stash/") {
+			// 如果是Stash，使用特殊的payload格式
+			ruleProvider["payload"] = quotedStringArrayJoin(rules, "\n")
 		}
 	}
 

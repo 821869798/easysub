@@ -1,6 +1,9 @@
 package v1
 
 import (
+	"log/slog"
+	"strings"
+
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/define"
 	"github.com/821869798/easysub/export/clash"
@@ -10,8 +13,6 @@ import (
 	"github.com/821869798/easysub/modules/tpl"
 	"github.com/821869798/easysub/modules/util"
 	"github.com/gin-gonic/gin"
-	"log/slog"
-	"strings"
 )
 
 func Sub(c *gin.Context) {
@@ -46,6 +47,8 @@ func Sub(c *gin.Context) {
 	ext.UDP = argUDP
 	ext.TFO = argTFO
 	ext.ManagedConfigPrefix = config.Global.ManagedConfig.ManagedConfigPrefix
+
+	ext.UserAgent = c.GetHeader("User-Agent")
 
 	// 解析所有参数
 	var reqMap = make(map[string]string)

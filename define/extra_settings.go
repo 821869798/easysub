@@ -18,6 +18,7 @@ type ExtraSettings struct {
 	ClashRulesetOptimizeToHttp bool
 	RequestHost                string
 	RequestHostWithProtocol    string
+	UserAgent                  string
 }
 
 func NewExtraSettings() *ExtraSettings {

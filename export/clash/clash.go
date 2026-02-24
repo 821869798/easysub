@@ -506,7 +506,9 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 	if !extraSetting.OverwriteOriginalRules && defined {
 		rules := originRules.([]interface{})
 		for _, x := range rules {
-			outputContentWriter.WriteString("  - " + x.(string) + "\n")
+			outputContentWriter.WriteString("  - ")
+			outputContentWriter.WriteString(x.(string))
+			outputContentWriter.WriteByte('\n')
 		}
 	}
 	delete(baseRule, fieldName)
@@ -578,14 +580,22 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 				currentRuleContentWriter.WriteString(rulesetOp.DomainOrigin.String())
 			} else {
 				realRuleName := transformRuleProvider(x, "domain", rulesetOp.DomainOptimize, ruleProviders, extraSetting)
-				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + "\n")
+				outputContentWriter.WriteString("  - RULE-SET,")
+				outputContentWriter.WriteString(realRuleName)
+				outputContentWriter.WriteByte(',')
+				outputContentWriter.WriteString(ruleGroup)
+				outputContentWriter.WriteByte('\n')
 			}
 
 			if len(rulesetOp.IpCidrOptimize) < OptimizeMinCount {
 				currentRuleContentWriter.WriteString(rulesetOp.IpCidrOrigin.String())
 			} else {
 				realRuleName := transformRuleProvider(x, "ipcidr", rulesetOp.IpCidrOptimize, ruleProviders, extraSetting)
-				outputContentWriter.WriteString("  - RULE-SET," + realRuleName + "," + ruleGroup + ",no-resolve" + "\n")
+				outputContentWriter.WriteString("  - RULE-SET,")
+				outputContentWriter.WriteString(realRuleName)
+				outputContentWriter.WriteByte(',')
+				outputContentWriter.WriteString(ruleGroup)
+				outputContentWriter.WriteString(",no-resolve\n")
 			}
 		}
 		outputContentWriter.WriteString(currentRuleContentWriter.String())
