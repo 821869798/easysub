@@ -1,5 +1,5 @@
 {% if Request.target == "singbox" %}
-{%- assign singboxIpv6 = Request.singbox.ipv6 | bool -%}
+{%- assign singboxIpv6 = Request.singbox.ipv6 | default: "true" | bool -%}
 {%- assign singboxEnableTun = Request.singbox.enable_tun | default: "false" -%}
 {
     "log": {
@@ -118,7 +118,8 @@
         },
         "clash_api": {
             "external_controller": "127.0.0.1:9090",
-            "external_ui": "dashboard"
+            "external_ui": "dashboard",
+            "external_ui_download_url": "https://gh-proxy.com/https://github.com/Zephyruso/zashboard/archive/refs/heads/gh-pages.zip"
         }
     }
 }

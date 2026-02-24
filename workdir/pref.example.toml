@@ -62,12 +62,12 @@ clash_geo_convert_ruleset = true
 singbox_add_clash_modes = true
 
 [node_pref.clash_rulesets]
-geoip = { name = "geoip", type = "ipcidr", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/mrs/%s.mrs" }
-geosite = { name = "geosite", type = "domain", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/%s.mrs" }
+geoip = { name = "geoip", type = "ipcidr", url_format = "https://fastly.jsdelivr.net/gh/Loyalsoldier/geoip@release/mrs/%s.mrs" }
+geosite = { name = "geosite", type = "domain", url_format = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/%s.mrs" }
 
 [node_pref.singbox_rulesets]
-geoip = { name = "geoip", url_format = "https://testingcf.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/%s.srs" }
-geosite = { name = "geosite", url_format = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/%s.srs" }
+geoip = { name = "geoip", url_format = "https://fastly.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/%s.srs" }
+geosite = { name = "geosite", url_format = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/%s.srs" }
 
 [managed_config]
 # Append a '#!MANAGED-CONFIG' info to Surge configurations
