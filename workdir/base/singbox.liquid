@@ -1,6 +1,6 @@
 {% if Request.target == "singbox" %}
-{%- assign singboxIpv6 = Request.singbox.ipv6 | default: "true" | bool -%}
-{%- assign singboxEnableTun = Request.singbox.enable_tun | default: "false" -%}
+{%- assign singboxIpv6 = Request.singbox.ipv6 | bool -%}
+{%- assign singboxEnableTun = Request.singbox.enable_tun | default: "false" | bool -%}
 {
     "log": {
         "disabled": false,
@@ -28,9 +28,7 @@
             },
             {
                 "inet4_range": "198.18.0.0/15",
-                {% if singboxIpv6 %}
                 "inet6_range": "fc00::/18",
-                {% endif %}
                 "tag": "dns_fakeip",
                 "type": "fakeip"
             }
@@ -87,7 +85,7 @@
             "listen": "127.0.0.1",
             {% endif %}
             "listen_port": {{ Global.singbox.mixed_port | default: "2080" }}
-        }{% if singboxEnableTun | bool %},
+        }{% if singboxEnableTun %},
         {
             "type": "tun",
             "tag": "tun-in",
@@ -119,7 +117,7 @@
         "clash_api": {
             "external_controller": "127.0.0.1:9090",
             "external_ui": "dashboard",
-            "external_ui_download_url": "https://gh-proxy.com/https://github.com/Zephyruso/zashboard/archive/refs/heads/gh-pages.zip"
+            "external_ui_download_url": "https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
         }
     }
 }
