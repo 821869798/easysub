@@ -94,6 +94,11 @@
                 "fdfe:dcba:9876::1/126"
                 {%- endif %}
             ],
+            "route_exclude_address": [
+                "10.0.0.0/8",
+                "192.168.0.0/16",
+                "fe80::/10"
+            ],
             "auto_route": true,
             "strict_route": true
         }
