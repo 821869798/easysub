@@ -100,6 +100,11 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 	nodeList := make([]*define.Proxy, 0)
 	remarksList := make([]string, 0)
 
+	endpoints := make([]interface{}, 0)
+	if existingEndpoints, ok := jsonObject["endpoints"].([]interface{}); ok {
+		endpoints = append(endpoints, existingEndpoints...)
+	}
+
 	direct := map[string]interface{}{
 		"type": "direct",
 		"tag":  "DIRECT",
@@ -265,20 +270,21 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 				proxy["hop_interval"] = formatSingBoxInterval(int(x.HopInterval))
 			}
 		case define.ProxyType_WireGuard:
-			proxy["type"] = "wireguard"
-			proxy["tag"] = x.Remark
+			endpoint := make(map[string]interface{})
+			endpoint["type"] = "wireguard"
+			endpoint["tag"] = x.Remark
 			address := []interface{}{
 				x.SelfIP,
 			}
 			if x.SelfIPv6 != "" {
 				address = append(address, x.SelfIPv6)
 			}
-			proxy["local_address"] = address
-			proxy["private_key"] = x.PrivateKey
+			endpoint["address"] = address
+			endpoint["private_key"] = x.PrivateKey
 
 			peer := make(map[string]interface{})
-			peer["server"] = x.Hostname
-			peer["server_port"] = x.Port
+			peer["address"] = x.Hostname
+			peer["port"] = x.Port
 			peer["public_key"] = x.PublicKey
 			if x.PreSharedKey != "" {
 				peer["pre_shared_key"] = x.PreSharedKey
@@ -287,18 +293,42 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			if x.AllowedIPs != "" {
 				allowedIPs := strings.Split(x.AllowedIPs, ",")
 				peer["allowed_ips"] = allowedIPs
+			} else {
+				peer["allowed_ips"] = []string{"0.0.0.0/0", "::/0"}
 			}
 
 			if x.ClientId != "" {
-				reserved := strings.Split(x.ClientId, ",")
-				peer["reserved"] = reserved
+				reservedStrs := strings.Split(x.ClientId, ",")
+				reservedInts := make([]interface{}, 0, len(reservedStrs))
+				allInts := true
+				for _, rStr := range reservedStrs {
+					rStr = strings.TrimSpace(rStr)
+					if val, err := strconv.Atoi(rStr); err == nil {
+						reservedInts = append(reservedInts, val)
+					} else {
+						allInts = false
+						break
+					}
+				}
+				if allInts && len(reservedInts) > 0 {
+					peer["reserved"] = reservedInts
+				} else {
+					peer["reserved"] = reservedStrs
+				}
 			}
 
 			peers := []interface{}{
 				peer,
 			}
-			proxy["peers"] = peers
-			proxy["mtu"] = x.Mtu
+			endpoint["peers"] = peers
+			if x.Mtu > 0 {
+				endpoint["mtu"] = x.Mtu
+			}
+			endpoints = append(endpoints, endpoint)
+
+			nodeList = append(nodeList, x)
+			remarksList = append(remarksList, x.Remark)
+			continue
 		case define.ProxyType_HTTP, define.ProxyType_HTTPS:
 			addSingBoxCommonMembers(proxy, x, "http")
 			proxy["username"] = x.Username
@@ -309,6 +339,15 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 			proxy["username"] = x.Username
 			proxy["password"] = x.Password
 		default:
+			slog.Warn("Unsupported proxy type for sing-box, skipped", slog.String("remark", x.Remark), slog.String("type", x.Type.String()))
+			continue
+		}
+		// Trojan is always TLS-secure by default
+		if x.Type == define.ProxyType_Trojan {
+			x.TLSSecure = true
+			if len(x.Alpn) == 0 {
+				x.Alpn = []string{"h2", "http/1.1"}
+			}
 		}
 		if x.TLSSecure && x.Type != define.ProxyType_VLESS {
 			tls := make(map[string]interface{})
@@ -322,6 +361,20 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 
 			if len(x.Alpn) > 0 {
 				tls["alpn"] = x.Alpn
+			}
+
+			// Add uTLS fingerprint if specified
+			fingerprint := ""
+			if x.ClientFingerprint != "" {
+				fingerprint = x.ClientFingerprint
+			} else if x.Fingerprint != "" {
+				fingerprint = x.Fingerprint
+			}
+			if fingerprint != "" {
+				utls := make(map[string]interface{})
+				utls["enabled"] = true
+				utls["fingerprint"] = fingerprint
+				tls["utls"] = utls
 			}
 
 			proxy["tls"] = tls
@@ -386,6 +439,9 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 		outbounds = append(outbounds, globalGroup)
 	}
 
+	if len(endpoints) > 0 {
+		jsonObject["endpoints"] = endpoints
+	}
 	jsonObject["outbounds"] = outbounds
 }
 
@@ -463,7 +519,7 @@ func buildSingBoxTransport(proxy *define.Proxy) map[string]interface{} {
 	switch proxy.TransferProtocol {
 	case "http":
 		if proxy.Host != "" {
-			transport["host"] = proxy.Host
+			transport["host"] = []string{proxy.Host}
 		}
 		fallthrough
 	case "ws":
@@ -529,10 +585,12 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 	if config.Global.NodePref.SingboxAddClashModes {
 		globalObject := map[string]interface{}{
 			"clash_mode": "Global",
+			"action":     "route",
 			"outbound":   "GLOBAL",
 		}
 		directObject := map[string]interface{}{
 			"clash_mode": "Direct",
+			"action":     "route",
 			"outbound":   "DIRECT",
 		}
 		rules = append(rules, globalObject)
@@ -566,8 +624,11 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 				final = ruleGroup
 				continue
 			}
-			rules = append(rules, transformRuleToSingBox(strLine, ruleGroup, rulesets))
-			totalRules++
+			ruleObj := transformRuleToSingBox(strLine, ruleGroup, rulesets)
+			if ruleObj != nil {
+				rules = append(rules, ruleObj)
+				totalRules++
+			}
 			continue
 		}
 		retrievedRules = common.ConvertRuleset(retrievedRules, x.RuleType)
@@ -593,6 +654,7 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 		if len(rule) == 0 {
 			continue
 		}
+		rule["action"] = "route"
 		rule["outbound"] = ruleGroup
 		rules = append(rules, rule)
 	}
@@ -621,9 +683,10 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 
 	ruleObj := make(map[string]interface{})
 	if typeName == "match" || typeName == "final" {
+		ruleObj["action"] = "route"
 		ruleObj["outbound"] = value
 	} else {
-		// 判断是否是geoip和geosite
+		// 判断是否是geoip and geosite
 		match := false
 		rulsetConfig, ok := config.Global.NodePref.SingboxRulesets[typeName]
 		if ok {
@@ -637,10 +700,11 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 					"format":          "binary",
 					"url":             realUrl,
 					"download_detour": "DIRECT",
-					"update_interval": "3d",
+					"update_interval": "5d",
 				}
 				rulesets[tagName] = rulesetObject
 			}
+			ruleObj["action"] = "route"
 			ruleObj["rule_set"] = tagName
 			ruleObj["outbound"] = group
 
@@ -648,6 +712,7 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 		}
 
 		if !match {
+			ruleObj["action"] = "route"
 			ruleObj[typeName] = value
 			ruleObj["outbound"] = group
 		}
