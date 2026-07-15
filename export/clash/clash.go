@@ -81,9 +81,10 @@ func ProxyToClash(nodes []*define.Proxy, baseConf string, rulesetContent []*defi
 
 func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}, extraProxyGroup []*define.ProxyGroupConfig, extraSetting *define.ExtraSettings) error {
 
-	nodeList := make([]*define.Proxy, 0)
-	remarksList := make([]string, 0)
-	proxies := make([]CompactObjectMap, 0)
+	nodeList := make([]*define.Proxy, 0, len(nodes))
+	remarksList := make([]string, 0, len(nodes))
+	remarkDeduplicator := common.NewRemarkDeduplicator(len(nodes))
+	proxies := make([]CompactObjectMap, 0, len(nodes))
 	originalGroups := make([]interface{}, 0)
 
 	for _, x := range nodes {
@@ -93,8 +94,6 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 		if extraSetting.AppendProxyType.Bool() {
 			x.Remark = "[" + proxyType + "] " + x.Remark
 		}
-
-		x.Remark = common.ProcessRemark(x.Remark, remarksList, false)
 
 		udp := extraSetting.UDP
 		tfo := extraSetting.TFO
@@ -405,6 +404,8 @@ func proxyToClashInternal(nodes []*define.Proxy, yamlNode map[string]interface{}
 		if !tfo.IsUndef() {
 			singleProxy["tfo"] = tfo.Bool()
 		}
+		x.Remark = remarkDeduplicator.Process(x.Remark, false)
+		singleProxy["name"] = x.Remark
 		proxies = append(proxies, singleProxy)
 		remarksList = append(remarksList, x.Remark)
 		nodeList = append(nodeList, x)
@@ -514,7 +515,7 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 	delete(baseRule, fieldName)
 
 	for _, x := range rulesetContent {
-		if config.Global.Advance.MaxAllowedRules > 0 && totalRules > config.Global.Advance.MaxAllowedRules {
+		if config.Global.Advance.MaxAllowedRules > 0 && totalRules >= config.Global.Advance.MaxAllowedRules {
 			break
 		}
 		ruleGroup := x.RuleGroup
@@ -547,6 +548,9 @@ func rulesetToClashStr(baseRule map[string]interface{}, rulesetContent []*define
 		currentRuleContentWriter := &strings.Builder{}
 		scanner := bufio.NewScanner(strings.NewReader(retrievedRules))
 		for scanner.Scan() {
+			if config.Global.Advance.MaxAllowedRules > 0 && totalRules >= config.Global.Advance.MaxAllowedRules {
+				break
+			}
 			strLine := strings.TrimSpace(scanner.Text()) // 修剪空白
 			strLine = strings.TrimSuffix(strLine, "\r")  // 修剪回车
 			if strLine == "" || strings.HasPrefix(strLine, ";") || strings.HasPrefix(strLine, "#") || strings.HasPrefix(strLine, "//") {

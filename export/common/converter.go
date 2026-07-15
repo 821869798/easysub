@@ -138,6 +138,55 @@ func ConvertRuleset(content string, ruleType define.RulesetType) string {
 }
 
 func ProcessRemark(remark string, remarksList []string, procComma bool) string {
+	remark = normalizeRemark(remark, procComma)
+
+	tempRemark := remark
+	cnt := 2
+	for contains(remarksList, tempRemark) {
+		tempRemark = remark + " " + strconv.Itoa(cnt)
+		cnt++
+	}
+	return tempRemark
+}
+
+type RemarkDeduplicator struct {
+	used map[string]struct{}
+	next map[string]int
+}
+
+func NewRemarkDeduplicator(capacity int) *RemarkDeduplicator {
+	return &RemarkDeduplicator{
+		used: make(map[string]struct{}, capacity),
+	}
+}
+
+func (d *RemarkDeduplicator) Process(remark string, procComma bool) string {
+	remark = normalizeRemark(remark, procComma)
+	if _, exists := d.used[remark]; !exists {
+		d.used[remark] = struct{}{}
+		return remark
+	}
+
+	if d.next == nil {
+		d.next = make(map[string]int)
+	}
+	counter := d.next[remark]
+	if counter < 2 {
+		counter = 2
+	}
+	for {
+		candidate := remark + " " + strconv.Itoa(counter)
+		counter++
+		if _, exists := d.used[candidate]; exists {
+			continue
+		}
+		d.next[remark] = counter
+		d.used[candidate] = struct{}{}
+		return candidate
+	}
+}
+
+func normalizeRemark(remark string, procComma bool) string {
 	// Replace every '=' with '-' in the remark string to avoid parse errors from the clients.
 	// Surge is tested to yield an error when handling '=' in the remark string,
 	// not sure if other clients have the same problem.
@@ -149,13 +198,7 @@ func ProcessRemark(remark string, remarksList []string, procComma bool) string {
 		}
 	}
 
-	tempRemark := remark
-	cnt := 2
-	for contains(remarksList, tempRemark) {
-		tempRemark = remark + " " + strconv.Itoa(cnt)
-		cnt++
-	}
-	return tempRemark
+	return remark
 }
 
 // Helper function to check if a slice contains a string

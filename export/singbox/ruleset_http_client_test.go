@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/821869798/easysub/config"
+	"github.com/821869798/easysub/define"
 )
 
 func TestRulesetTagUsesSingBox114HTTPClient(t *testing.T) {
@@ -28,6 +29,27 @@ func TestRulesetTagUsesSingBox114HTTPClient(t *testing.T) {
 	assertRuleSetHTTPClient(t, document.RuleSets[0])
 }
 
+func TestSkippedProxyDoesNotReserveSingBoxRemark(t *testing.T) {
+	restoreConfig := useRulesetTestConfig()
+	t.Cleanup(restoreConfig)
+	nodes := []*define.Proxy{
+		{Type: define.ProxyType_Unknown, Remark: "same-name"},
+		{Type: define.ProxyType_VMess, Remark: "same-name"},
+	}
+	configObject := make(map[string]interface{})
+
+	proxyToSingBoxInternal(nodes, configObject, nil, &define.ExtraSettings{})
+
+	outbounds := configObject["outbounds"].([]interface{})
+	if len(outbounds) != 3 {
+		t.Fatalf("outbound count = %d, want 3", len(outbounds))
+	}
+	proxy := outbounds[2].(map[string]interface{})
+	if got := proxy["tag"]; got != "same-name" {
+		t.Fatalf("valid proxy tag = %v, want same-name", got)
+	}
+}
+
 func TestDynamicRulesetUsesSingBox114HTTPClient(t *testing.T) {
 	restoreConfig := useRulesetTestConfig()
 	t.Cleanup(restoreConfig)
@@ -40,6 +62,19 @@ func TestDynamicRulesetUsesSingBox114HTTPClient(t *testing.T) {
 		t.Fatalf("generated rule-set has unexpected type: %T", ruleSets["geosite-cn"])
 	}
 	assertRuleSetHTTPClient(t, ruleSet)
+}
+
+func TestAppendSingBoxRuleKeepsOnlyRuleTypeAndValue(t *testing.T) {
+	rules := make(map[string]interface{})
+	appendSingBoxRule(rules, "DOMAIN-SUFFIX,Example.COM,no-resolve")
+
+	values, ok := rules["domain_suffix"].([]interface{})
+	if !ok || len(values) != 1 {
+		t.Fatalf("domain_suffix has unexpected value: %#v", rules["domain_suffix"])
+	}
+	if got := values[0]; got != "example.com" {
+		t.Fatalf("domain_suffix value = %v, want example.com", got)
+	}
 }
 
 func useRulesetTestConfig() func() {

@@ -17,8 +17,14 @@ const (
 var (
 	clientCacheCount atomic.Int32
 	clientCache      sync.Map
+	clientCacheMu    sync.Mutex
 	requestGroup     singleflight.Group
 )
+
+type cachedHTTPClient struct {
+	client    *http.Client
+	transport *http.Transport
+}
 
 func WebGet(targetURL, proxy string, cacheTTL int) (string, error) {
 	if cacheTTL <= 0 { // 如果 TTL 无效，则不使用缓存，直接获取
@@ -62,7 +68,17 @@ func WebGet(targetURL, proxy string, cacheTTL int) (string, error) {
 
 func getHTTPClient(proxy string) *http.Client {
 	if v, ok := clientCache.Load(proxy); ok {
-		return v.(*http.Client)
+		return v.(*cachedHTTPClient).client
+	}
+
+	clientCacheMu.Lock()
+	defer clientCacheMu.Unlock()
+
+	if v, ok := clientCache.Load(proxy); ok {
+		return v.(*cachedHTTPClient).client
+	}
+	if clientCacheCount.Load() >= 100 {
+		clearHTTPClientCache()
 	}
 
 	transport := &http.Transport{}
@@ -70,20 +86,28 @@ func getHTTPClient(proxy string) *http.Client {
 		transport.Proxy = ParseProxy(proxy)
 	}
 
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   10 * time.Second,
+	entry := &cachedHTTPClient{
+		client: &http.Client{
+			Transport: transport,
+			Timeout:   10 * time.Second,
+		},
+		transport: transport,
 	}
 
-	// cache many counts, need clear
-	if clientCacheCount.Load() > 100 {
-		clientCache.Clear()
-		clientCacheCount.Store(0)
-	}
-
-	clientCache.Store(proxy, client)
+	clientCache.Store(proxy, entry)
 	clientCacheCount.Add(1)
-	return client
+	return entry.client
+}
+
+func clearHTTPClientCache() {
+	clientCache.Range(func(key, value interface{}) bool {
+		if entry, ok := value.(*cachedHTTPClient); ok {
+			entry.transport.CloseIdleConnections()
+		}
+		clientCache.Delete(key)
+		return true
+	})
+	clientCacheCount.Store(0)
 }
 
 func fetchWebDirectly(targetURL, proxy string) ([]byte, error) {

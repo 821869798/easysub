@@ -67,6 +67,12 @@ func Ruleset(c *gin.Context) {
 		content := clash.ConvertRulesetContentToText(rulesetContent, convertType)
 		buf := bufPool.Get().(*bytes.Buffer)
 		buf.Reset()
+		defer func() {
+			if buf.Cap() <= maxBufCap {
+				buf.Reset()
+				bufPool.Put(buf)
+			}
+		}()
 
 		err := provider.ConvertToMrs([]byte(content), ruleBehavior, P.TextRule, buf)
 		if err != nil {
@@ -86,10 +92,6 @@ func Ruleset(c *gin.Context) {
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s.mrs", rulesetName))
 		c.Data(200, "application/octet-stream", data)
 
-		// only return buf to pool if capacity not exceeding limit
-		if buf.Cap() <= maxBufCap {
-			bufPool.Put(buf)
-		}
 	default:
 		c.String(400, "Invalid request! no target provided")
 		return

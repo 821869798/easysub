@@ -148,30 +148,64 @@ func ParseRulesetContents(rulesetConfig []*RulesetConfig) []*RulesetContent {
 }
 
 func mergeAdjacentRulesets(contents []*RulesetContent) []*RulesetContent {
-	var merged []*RulesetContent
-	for i := 0; i < len(contents); i++ {
-		current := contents[i]
-		if i > 0 && current.RulePathTyped != "" && current.RuleGroup == merged[len(merged)-1].RuleGroup {
-			lastContent := merged[len(merged)-1]
-			var sb strings.Builder
-			sb.Grow(len(lastContent.RuleContent) + 1 + len(current.RuleContent))
-			sb.WriteString(lastContent.RuleContent)
-			sb.WriteByte('\n')
-			sb.WriteString(current.RuleContent)
-			lastContent.RuleContent = sb.String()
-			lastContent.RulePath = append(lastContent.RulePath, current.RulePath...)
-		} else {
-			merged = append(merged, &RulesetContent{
-				RuleGroup:      current.RuleGroup,
-				RulePath:       current.RulePath,
-				RulePathTyped:  current.RulePathTyped,
-				RuleType:       current.RuleType,
-				RuleContent:    current.RuleContent,
-				UpdateInterval: current.UpdateInterval,
-			})
+	merged := make([]*RulesetContent, 0, len(contents))
+	for start := 0; start < len(contents); {
+		first := contents[start]
+		if first == nil {
+			merged = append(merged, nil)
+			start++
+			continue
 		}
+
+		end := start + 1
+		contentSize := len(first.RuleContent)
+		pathCount := len(first.RulePath)
+		for end < len(contents) && canMergeRulesets(first, contents[end]) {
+			contentSize += 1 + len(contents[end].RuleContent)
+			pathCount += len(contents[end].RulePath)
+			end++
+		}
+
+		mergedContent := first.RuleContent
+		if end-start > 1 {
+			var builder strings.Builder
+			builder.Grow(contentSize)
+			for index := start; index < end; index++ {
+				if index > start {
+					builder.WriteByte('\n')
+				}
+				builder.WriteString(contents[index].RuleContent)
+			}
+			mergedContent = builder.String()
+		}
+
+		mergedPaths := first.RulePath
+		if end-start > 1 {
+			mergedPaths = make([]string, 0, pathCount)
+			for index := start; index < end; index++ {
+				mergedPaths = append(mergedPaths, contents[index].RulePath...)
+			}
+		}
+		merged = append(merged, &RulesetContent{
+			RuleGroup:      first.RuleGroup,
+			RulePath:       mergedPaths,
+			RulePathTyped:  first.RulePathTyped,
+			RuleType:       first.RuleType,
+			RuleContent:    mergedContent,
+			UpdateInterval: first.UpdateInterval,
+		})
+		start = end
 	}
 	return merged
+}
+
+func canMergeRulesets(first, next *RulesetContent) bool {
+	return first != nil &&
+		next != nil &&
+		first.RulePathTyped != "" &&
+		next.RulePathTyped != "" &&
+		first.RuleGroup == next.RuleGroup &&
+		first.RuleType == next.RuleType
 }
 
 func CreateRulesetContentFromUrls(urls []string, group string, ruleType RulesetType) *RulesetContent {

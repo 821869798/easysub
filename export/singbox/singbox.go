@@ -96,11 +96,12 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 }
 
 func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interface{}, extraProxyGroup []*define.ProxyGroupConfig, extraSetting *define.ExtraSettings) {
-	outbounds := make([]interface{}, 0, 3)
-	nodeList := make([]*define.Proxy, 0)
-	remarksList := make([]string, 0)
+	outbounds := make([]interface{}, 0, len(nodes)+len(extraProxyGroup)+3)
+	nodeList := make([]*define.Proxy, 0, len(nodes))
+	remarksList := make([]string, 0, len(nodes))
+	remarkDeduplicator := common.NewRemarkDeduplicator(len(nodes))
 
-	endpoints := make([]interface{}, 0)
+	endpoints := make([]interface{}, 0, len(nodes))
 	if existingEndpoints, ok := jsonObject["endpoints"].([]interface{}); ok {
 		endpoints = append(endpoints, existingEndpoints...)
 	}
@@ -123,8 +124,6 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 		if extraSetting.AppendProxyType.Bool() {
 			x.Remark = "[" + proxyType + "] " + x.Remark
 		}
-
-		x.Remark = common.ProcessRemark(x.Remark, remarksList, false)
 
 		udp := extraSetting.UDP
 		tfo := extraSetting.TFO
@@ -270,6 +269,7 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 				proxy["hop_interval"] = formatSingBoxInterval(int(x.HopInterval))
 			}
 		case define.ProxyType_WireGuard:
+			x.Remark = remarkDeduplicator.Process(x.Remark, false)
 			endpoint := make(map[string]interface{})
 			endpoint["type"] = "wireguard"
 			endpoint["tag"] = x.Remark
@@ -385,6 +385,8 @@ func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interfa
 		if !tfo.IsUndef() {
 			proxy["tcp_fast_open"] = tfo.Bool()
 		}
+		x.Remark = remarkDeduplicator.Process(x.Remark, false)
+		proxy["tag"] = x.Remark
 		nodeList = append(nodeList, x)
 		remarksList = append(remarksList, x.Remark)
 		outbounds = append(outbounds, proxy)
@@ -609,7 +611,7 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 	rules = append(rules, dnsObject)
 
 	for _, x := range rulesetContentArray {
-		if config.Global.Advance.MaxAllowedRules > 0 && totalRules > config.Global.Advance.MaxAllowedRules {
+		if config.Global.Advance.MaxAllowedRules > 0 && totalRules >= config.Global.Advance.MaxAllowedRules {
 			break
 		}
 		ruleGroup := x.RuleGroup
@@ -636,7 +638,7 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 
 		scanner := bufio.NewScanner(strings.NewReader(retrievedRules))
 		for scanner.Scan() {
-			if config.Global.Advance.MaxAllowedRules > 0 && totalRules > config.Global.Advance.MaxAllowedRules {
+			if config.Global.Advance.MaxAllowedRules > 0 && totalRules >= config.Global.Advance.MaxAllowedRules {
 				break
 			}
 			strLine := strings.TrimSpace(scanner.Text()) // 修剪空白
@@ -649,7 +651,9 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 				strLine = strLine[:strings.Index(strLine, "//")]
 				strLine = strings.TrimSpace(strLine)
 			}
-			appendSingBoxRule(rule, strLine)
+			if appendSingBoxRule(rule, strLine) {
+				totalRules++
+			}
 		}
 		if len(rule) == 0 {
 			continue
@@ -671,12 +675,13 @@ func rulesetToSingBox(baseRule map[string]interface{}, rulesetContentArray []*de
 }
 
 func transformRuleToSingBox(rule, group string, rulesets map[string]interface{}) map[string]interface{} {
-	args := strings.Split(rule, ",")
-	if len(args) < 2 {
+	typeName, rest, ok := strings.Cut(rule, ",")
+	if !ok {
 		return nil
 	}
-	typeName := strings.ToLower(args[0])
-	value := strings.ToLower(args[1])
+	value, _, _ := strings.Cut(rest, ",")
+	typeName = strings.ToLower(typeName)
+	value = strings.ToLower(value)
 	typeName = strings.ReplaceAll(typeName, "-", "_")
 	typeName = strings.ReplaceAll(typeName, "ip_cidr6", "ip_cidr")
 	typeName = strings.ReplaceAll(typeName, "src_", "source_")
@@ -720,20 +725,20 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 	return ruleObj
 }
 
-func appendSingBoxRule(rules map[string]interface{}, rule string) {
-	args := strings.Split(rule, ",")
-	if len(args) < 2 {
-		return
+func appendSingBoxRule(rules map[string]interface{}, rule string) bool {
+	typeName, rest, ok := strings.Cut(rule, ",")
+	if !ok {
+		return false
 	}
-	typeName := args[0]
+	value, _, _ := strings.Cut(rest, ",")
 
 	_, hasOne := common.SingBoxRuleTypesMap[typeName]
 	if !hasOne {
-		return
+		return false
 	}
 
 	realType := strings.ToLower(typeName)
-	value := strings.ToLower(args[1])
+	value = strings.ToLower(value)
 	realType = strings.ReplaceAll(realType, "-", "_")
 	realType = strings.ReplaceAll(realType, "ip_cidr6", "ip_cidr")
 
@@ -743,4 +748,5 @@ func appendSingBoxRule(rules map[string]interface{}, rule string) {
 	}
 	realTypeArray = append(realTypeArray, value)
 	rules[realType] = realTypeArray
+	return true
 }
