@@ -44,7 +44,7 @@ func init() {
 			"type":            "remote",
 			"format":          "binary",
 			"url":             realUrl,
-			"download_detour": "DIRECT",
+			"http_client":     map[string]interface{}{"detour": "DIRECT"},
 			"update_interval": "5d",
 		}
 		// json 序列化
@@ -699,7 +699,7 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 					"type":            "remote",
 					"format":          "binary",
 					"url":             realUrl,
-					"download_detour": "DIRECT",
+					"http_client":     map[string]interface{}{"detour": "DIRECT"},
 					"update_interval": "5d",
 				}
 				rulesets[tagName] = rulesetObject
