@@ -74,7 +74,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-03 | [x] | sing-box node output | Modern URI protocols and WireGuard endpoints tested; Snell intentionally skipped as unsupported |
 | EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
-| EXP-06 | [-] | Rule injection | Common domain/IP/process/port rules done |
+| EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and OR-preserving field buckets |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
 | EXP-08 | [ ] | Clash rule-provider optimization | Optional performance feature; correctness must not depend on it |
 
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 52 tests including response metadata caching, large mixed rulesets, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 55 tests including extended typed rules, response metadata caching, large mixed rulesets, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [x] | Go/Rust golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
@@ -121,7 +121,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | DEP-01 | [x] | Rust version floor | Rust 1.96.0; no older toolchain compatibility target |
 | DEP-02 | [x] | Direct crates at latest stable versions | crates.io API audit on 2026-07-16; tower-http upgraded to 0.7.0 |
 | DEP-03 | [x] | Transitive lockfile update | `cargo update` selected the newest versions allowed by direct dependencies |
-| DEP-04 | [-] | YAML implementation | `serde_yaml 0.9.34+deprecated` is still crates.io latest; replacement needs a separate compatibility decision |
+| DEP-04 | [x] | YAML implementation decision | Keep `serde_yaml 0.9.34+deprecated` through cutover; reconsider a maintained Serde-compatible implementation after its API and compatibility mature |
 
 Axum 0.8.9 pins `matchit = 0.8.4` exactly, so Cargo correctly rejects the
 newer matchit 0.8.6 until Axum itself updates that constraint.

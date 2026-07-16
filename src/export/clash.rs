@@ -5,7 +5,7 @@ use crate::{
     external::{GroupKind, LoadedRuleset, ProxyGroup},
     group,
     model::{Proxy, ProxyKind},
-    rules::parse_common_rules,
+    rules::parse_common_rules_filtered,
 };
 
 use super::prepare_nodes;
@@ -127,7 +127,12 @@ pub fn to_clash_full(
             if max_rules > 0 && remaining == 0 {
                 break;
             }
-            for rule in parse_common_rules(&ruleset.content, ruleset.format, remaining) {
+            for rule in parse_common_rules_filtered(
+                &ruleset.content,
+                ruleset.format,
+                remaining,
+                is_clash_rule,
+            ) {
                 let kind = if rule.kind == "FINAL" {
                     "MATCH"
                 } else {
@@ -154,6 +159,28 @@ pub fn to_clash_full(
     }
     serde_yaml::to_string(&config)
         .map_err(|error| AppError::Conversion(format!("Clash YAML serialization failed: {error}")))
+}
+
+fn is_clash_rule(rule: &crate::rules::RuleLine) -> bool {
+    matches!(
+        rule.kind.as_str(),
+        "DOMAIN"
+            | "DOMAIN-SUFFIX"
+            | "DOMAIN-KEYWORD"
+            | "IP-CIDR"
+            | "IP-CIDR6"
+            | "SRC-IP-CIDR"
+            | "GEOIP"
+            | "SRC-GEOIP"
+            | "GEOSITE"
+            | "MATCH"
+            | "FINAL"
+            | "PROCESS-NAME"
+            | "SRC-PORT"
+            | "DST-PORT"
+            | "NETWORK"
+            | "PROTOCOL"
+    )
 }
 
 fn proxy_value(proxy: &Proxy) -> Value {
@@ -478,5 +505,17 @@ mod tests {
         assert_eq!(config["proxy-groups"][0]["use"], json!(["one", "two"]));
         assert!(config["proxy-groups"][0].get("proxies").is_none());
         assert_eq!(config["proxy-groups"][1]["strategy"], "consistent-hashing");
+    }
+
+    #[test]
+    fn filters_singbox_only_rules_before_applying_clash_limit() {
+        let rulesets = [LoadedRuleset {
+            group: "PROXY".into(),
+            content: "IP-VERSION,6\nDOMAIN,kept.example".into(),
+            format: crate::external::RulesetFormat::Surge,
+        }];
+        let output = to_clash_full(&[], None, &[], &rulesets, true, 1, false, false).unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        assert_eq!(config["rules"], json!(["DOMAIN,kept.example,PROXY"]));
     }
 }

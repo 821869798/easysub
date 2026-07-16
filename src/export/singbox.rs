@@ -8,7 +8,7 @@ use crate::{
     external::{GroupKind, LoadedRuleset, ProxyGroup},
     group,
     model::{Proxy, ProxyKind},
-    rules::parse_common_rules,
+    rules::{RuleLine, parse_common_rules_filtered},
 };
 
 use super::prepare_nodes;
@@ -171,18 +171,17 @@ pub fn to_singbox_full(
             max_rules - generated
         };
         let mut rule_objects = Vec::new();
-        let mut rule_object = Map::new();
-        for rule in parse_common_rules(&ruleset.content, ruleset.format, remaining) {
+        for rule in
+            parse_common_rules_filtered(&ruleset.content, ruleset.format, remaining, |rule| {
+                is_singbox_rule(rule, ruleset_transforms)
+            })
+        {
             if matches!(rule.kind.as_str(), "FINAL" | "MATCH") {
                 final_outbound = Some(ruleset.group.clone());
                 continue;
             }
             let Some(value) = rule.value else { continue };
             if let Some(transform) = ruleset_transforms.get(&rule.kind.to_ascii_lowercase()) {
-                if !rule_object.is_empty() {
-                    finish_rule(&mut rule_object, &ruleset.group);
-                    rule_objects.push(Value::Object(std::mem::take(&mut rule_object)));
-                }
                 let kind = rule.kind.to_ascii_lowercase();
                 let value = value.to_ascii_lowercase();
                 let tag = format!("{kind}-{value}");
@@ -207,36 +206,22 @@ pub fn to_singbox_full(
                 }
                 continue;
             }
-            let field = match rule.kind.as_str() {
-                "DOMAIN" => "domain",
-                "DOMAIN-SUFFIX" => "domain_suffix",
-                "DOMAIN-KEYWORD" => "domain_keyword",
-                "IP-CIDR" | "IP-CIDR6" => "ip_cidr",
-                "SRC-IP-CIDR" => "source_ip_cidr",
-                "PROCESS-NAME" => "process_name",
-                "SRC-PORT" => "source_port",
-                "DST-PORT" => "port",
-                "NETWORK" => "network",
-                "PROTOCOL" => "protocol",
-                "GEOIP" => "geoip",
-                "SRC-GEOIP" => "source_geoip",
-                "GEOSITE" => "geosite",
-                _ => continue,
+            let Some((field, value, scalar)) = singbox_rule_value(&rule.kind, &value) else {
+                continue;
             };
-            rule_object
-                .entry(field)
-                .or_insert_with(|| Value::Array(Vec::new()))
-                .as_array_mut()
-                .expect("sing-box rule field is always an array")
-                .push(Value::String(value.to_ascii_lowercase()));
+            push_singbox_rule(&mut rule_objects, field, value, scalar);
             generated += 1;
             if max_rules > 0 && generated >= max_rules {
                 break;
             }
         }
-        if !rule_object.is_empty() {
-            finish_rule(&mut rule_object, &ruleset.group);
-            rule_objects.push(Value::Object(rule_object));
+        for rule in &mut rule_objects {
+            let object = rule
+                .as_object_mut()
+                .expect("generated sing-box rule is always an object");
+            if !object.contains_key("action") {
+                finish_rule(object, &ruleset.group);
+            }
         }
         route_rules.extend(rule_objects);
     }
@@ -258,6 +243,107 @@ pub fn to_singbox_full(
     serde_json::to_string(&config).map_err(|error| {
         AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
     })
+}
+
+fn is_singbox_rule(
+    rule: &RuleLine,
+    ruleset_transforms: &HashMap<String, RulesetTransform>,
+) -> bool {
+    if matches!(rule.kind.as_str(), "FINAL" | "MATCH") {
+        return true;
+    }
+    let Some(value) = rule.value.as_deref() else {
+        return false;
+    };
+    ruleset_transforms.contains_key(&rule.kind.to_ascii_lowercase())
+        || singbox_rule_value(&rule.kind, value).is_some()
+}
+
+fn singbox_rule_value(kind: &str, value: &str) -> Option<(&'static str, Value, bool)> {
+    let string = |field, value: String| Some((field, Value::String(value), false));
+    let lowered = || value.to_ascii_lowercase();
+    match kind {
+        "DOMAIN" => string("domain", lowered()),
+        "DOMAIN-SUFFIX" => string("domain_suffix", lowered()),
+        "DOMAIN-KEYWORD" => string("domain_keyword", lowered()),
+        "DOMAIN-REGEX" => string("domain_regex", value.to_owned()),
+        "IP-CIDR" | "IP-CIDR6" => string("ip_cidr", value.to_owned()),
+        "SRC-IP-CIDR" => string("source_ip_cidr", value.to_owned()),
+        "PROCESS-NAME" => string("process_name", value.to_owned()),
+        "PROCESS-PATH" => string("process_path", value.to_owned()),
+        "PROCESS-PATH-REGEX" => string("process_path_regex", value.to_owned()),
+        "PACKAGE-NAME" => string("package_name", value.to_owned()),
+        "PACKAGE-NAME-REGEX" => string("package_name_regex", value.to_owned()),
+        "SRC-PORT" => value
+            .parse::<u16>()
+            .ok()
+            .map(|value| ("source_port", value.into(), false)),
+        "DST-PORT" | "PORT" => value
+            .parse::<u16>()
+            .ok()
+            .map(|value| ("port", value.into(), false)),
+        "SRC-PORT-RANGE" => {
+            normalize_port_range(value).map(|value| ("source_port_range", value.into(), false))
+        }
+        "PORT-RANGE" => {
+            normalize_port_range(value).map(|value| ("port_range", value.into(), false))
+        }
+        "NETWORK" => string("network", lowered()),
+        "PROTOCOL" => string("protocol", lowered()),
+        "INBOUND" => string("inbound", value.to_owned()),
+        "IP-VERSION" => value
+            .parse::<u8>()
+            .ok()
+            .filter(|value| matches!(value, 4 | 6))
+            .map(|value| ("ip_version", value.into(), true)),
+        "USER" => string("user", value.to_owned()),
+        "USER-ID" => value
+            .parse::<i32>()
+            .ok()
+            .map(|value| ("user_id", value.into(), false)),
+        "GEOIP" => string("geoip", lowered()),
+        "SRC-GEOIP" => string("source_geoip", lowered()),
+        "GEOSITE" => string("geosite", lowered()),
+        _ => None,
+    }
+}
+
+fn push_singbox_rule(rules: &mut Vec<Value>, field: &'static str, value: Value, scalar: bool) {
+    if scalar {
+        let mut rule = Map::new();
+        rule.insert(field.into(), value);
+        rules.push(Value::Object(rule));
+        return;
+    }
+    if let Some(values) = rules
+        .iter_mut()
+        .filter_map(Value::as_object_mut)
+        .find_map(|rule| rule.get_mut(field).and_then(Value::as_array_mut))
+    {
+        values.push(value);
+        return;
+    }
+    let mut rule = Map::new();
+    rule.insert(field.into(), Value::Array(vec![value]));
+    rules.push(Value::Object(rule));
+}
+
+fn normalize_port_range(value: &str) -> Option<String> {
+    let normalized = if value.contains(':') {
+        value.to_owned()
+    } else {
+        value.replacen('-', ":", 1)
+    };
+    let (start, end) = normalized.split_once(':')?;
+    if start.is_empty() && end.is_empty() {
+        return None;
+    }
+    if (!start.is_empty() && start.parse::<u16>().is_err())
+        || (!end.is_empty() && end.parse::<u16>().is_err())
+    {
+        return None;
+    }
+    Some(normalized)
 }
 
 fn finish_rule(rule: &mut Map<String, Value>, outbound: &str) {
@@ -602,5 +688,73 @@ mod tests {
             .unwrap();
         assert_eq!(tuic["heartbeat"], "10s");
         assert_eq!(hysteria["hop_interval"], "30s");
+    }
+
+    #[test]
+    fn exports_extended_rules_with_native_types_and_or_semantics() {
+        let rulesets = [LoadedRuleset {
+            group: "PROXY".into(),
+            content: [
+                "DOMAIN,Example.COM",
+                "IP-VERSION,6",
+                "INBOUND,Mixed-In",
+                r"DOMAIN-REGEX,^https?://API\..+$",
+                "PROCESS-PATH,/Opt/MyApp/Bin",
+                r"PROCESS-PATH-REGEX,^/Opt/.+$",
+                "PACKAGE-NAME,Com.Example.App",
+                r"PACKAGE-NAME-REGEX,^Com\.Example\..+$",
+                "PORT,443",
+                "DEST-PORT,8443",
+                "PORT-RANGE,1000-2000",
+                "SRC-PORT,5353",
+                "SRC-PORT-RANGE,:1024",
+                "USER,ServiceUser",
+                "USER-ID,1000",
+            ]
+            .join("\n"),
+            format: RulesetFormat::Surge,
+        }];
+        let output = to_singbox_full(
+            &[],
+            None,
+            &[],
+            &rulesets,
+            true,
+            0,
+            &HashMap::new(),
+            0,
+            false,
+            false,
+        )
+        .unwrap();
+        let config: Value = serde_json::from_str(&output).unwrap();
+        let rules = config["route"]["rules"].as_array().unwrap();
+        let field = |name: &str| {
+            rules
+                .iter()
+                .find_map(|rule| rule.get(name))
+                .unwrap_or_else(|| panic!("missing sing-box rule field {name}"))
+        };
+
+        assert_eq!(field("domain"), &json!(["example.com"]));
+        assert_eq!(field("ip_version"), 6);
+        assert_eq!(field("inbound"), &json!(["Mixed-In"]));
+        assert_eq!(field("domain_regex"), &json!([r"^https?://API\..+$"]));
+        assert_eq!(field("process_path"), &json!(["/Opt/MyApp/Bin"]));
+        assert_eq!(field("process_path_regex"), &json!([r"^/Opt/.+$"]));
+        assert_eq!(field("package_name"), &json!(["Com.Example.App"]));
+        assert_eq!(field("package_name_regex"), &json!([r"^Com\.Example\..+$"]));
+        assert_eq!(field("port"), &json!([443, 8443]));
+        assert_eq!(field("port_range"), &json!(["1000:2000"]));
+        assert_eq!(field("source_port"), &json!([5353]));
+        assert_eq!(field("source_port_range"), &json!([":1024"]));
+        assert_eq!(field("user"), &json!(["ServiceUser"]));
+        assert_eq!(field("user_id"), &json!([1000]));
+        assert!(
+            rules
+                .iter()
+                .all(|rule| { !(rule.get("domain").is_some() && rule.get("port").is_some()) })
+        );
+        assert!(rules.iter().all(|rule| rule["outbound"] == "PROXY"));
     }
 }

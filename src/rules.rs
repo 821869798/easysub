@@ -15,8 +15,18 @@ pub struct RuleLine {
 }
 
 pub fn parse_common_rules(content: &str, format: RulesetFormat, limit: usize) -> Vec<RuleLine> {
+    parse_common_rules_filtered(content, format, limit, |_| true)
+}
+
+pub fn parse_common_rules_filtered(
+    content: &str,
+    format: RulesetFormat,
+    limit: usize,
+    accept: impl Fn(&RuleLine) -> bool,
+) -> Vec<RuleLine> {
     if let Some(inline) = content.strip_prefix("[]") {
         return parse_common_line(inline, RulesetFormat::Surge)
+            .filter(|rule| accept(rule))
             .into_iter()
             .collect();
     }
@@ -36,17 +46,14 @@ pub fn parse_common_rules(content: &str, format: RulesetFormat, limit: usize) ->
     };
     lines
         .filter_map(|line| {
-            let line = line
-                .split_once("//")
-                .map_or(line, |(rule, _)| rule)
-                .trim()
-                .trim_matches(['\'', '"']);
+            let line = strip_inline_comment(line).trim().trim_matches(['\'', '"']);
             if line.is_empty() || line.starts_with(['#', ';']) || line.starts_with("//") {
                 None
             } else {
                 parse_common_line(line, format)
             }
         })
+        .filter(accept)
         .take(if limit == 0 { usize::MAX } else { limit })
         .collect()
 }
@@ -90,6 +97,10 @@ fn parse_common_line(line: &str, format: RulesetFormat) -> Option<RuleLine> {
                     _ => kind,
                 };
             }
+            kind = match kind.as_str() {
+                "DEST-PORT" => "DST-PORT".into(),
+                _ => kind,
+            };
             let value = parts
                 .next()
                 .filter(|value| !value.is_empty())
@@ -112,6 +123,18 @@ fn parse_common_line(line: &str, format: RulesetFormat) -> Option<RuleLine> {
                 "DST-PORT",
                 "NETWORK",
                 "PROTOCOL",
+                "IP-VERSION",
+                "INBOUND",
+                "DOMAIN-REGEX",
+                "PROCESS-PATH",
+                "PROCESS-PATH-REGEX",
+                "PACKAGE-NAME",
+                "PACKAGE-NAME-REGEX",
+                "PORT",
+                "PORT-RANGE",
+                "SRC-PORT-RANGE",
+                "USER",
+                "USER-ID",
             ];
             supported.contains(&kind.as_str()).then_some(RuleLine {
                 kind,
@@ -163,7 +186,7 @@ pub fn normalize_rules(
         if result.len() >= limit {
             break;
         }
-        let line = raw.trim().trim_matches(['\'', '"']);
+        let line = strip_inline_comment(raw).trim().trim_matches(['\'', '"']);
         if line.is_empty()
             || line.starts_with('#')
             || line.starts_with(';')
@@ -181,6 +204,18 @@ pub fn normalize_rules(
         ));
     }
     Ok(result)
+}
+
+fn strip_inline_comment(line: &str) -> &str {
+    line.match_indices("//")
+        .find(|(index, _)| {
+            *index == 0
+                || line[..*index]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_whitespace)
+        })
+        .map_or(line, |(index, _)| &line[..index])
 }
 
 fn normalize_rule(line: &str, behavior: RuleBehavior) -> Option<String> {
@@ -259,5 +294,15 @@ mod tests {
         let rules =
             normalize_rules("DOMAIN,a.test\nDOMAIN,b.test", RuleBehavior::Domain, 1).unwrap();
         assert_eq!(rules, ["a.test"]);
+    }
+
+    #[test]
+    fn preserves_double_slashes_inside_rule_values() {
+        let rules = parse_common_rules(
+            r"DOMAIN-REGEX,^https?://api\.example // trailing comment",
+            RulesetFormat::Surge,
+            0,
+        );
+        assert_eq!(rules[0].value.as_deref(), Some(r"^https?://api\.example"));
     }
 }
