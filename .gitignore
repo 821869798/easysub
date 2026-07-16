@@ -23,3 +23,5 @@ go.work
 workdir/pref.toml
 workdir/cache
 subconverter_src/
+# Rust build output
+/target/

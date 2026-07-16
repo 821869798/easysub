@@ -1,0 +1,122 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyKind {
+    Shadowsocks,
+    Vmess,
+    Vless,
+    Trojan,
+    Http,
+    Https,
+    Socks5,
+    Wireguard,
+    Tuic,
+    Anytls,
+    Hysteria2,
+}
+
+impl ProxyKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Shadowsocks => "Shadowsocks",
+            Self::Vmess => "VMess",
+            Self::Vless => "VLESS",
+            Self::Trojan => "Trojan",
+            Self::Http => "HTTP",
+            Self::Https => "HTTPS",
+            Self::Socks5 => "SOCKS5",
+            Self::Wireguard => "WireGuard",
+            Self::Tuic => "TUIC",
+            Self::Anytls => "AnyTLS",
+            Self::Hysteria2 => "Hysteria2",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Proxy {
+    pub kind: ProxyKind,
+    pub group_id: u32,
+    pub group: String,
+    pub name: String,
+    pub server: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub method: String,
+    pub uuid: String,
+    pub alter_id: u16,
+    pub network: String,
+    pub host: String,
+    pub path: String,
+    pub tls: bool,
+    pub server_name: String,
+    pub flow: String,
+    pub fingerprint: String,
+    pub public_key: String,
+    pub short_id: String,
+    pub plugin: String,
+    pub plugin_opts: String,
+    pub alpn: Vec<String>,
+    pub udp: Option<bool>,
+    pub tcp_fast_open: Option<bool>,
+    pub skip_cert_verify: Option<bool>,
+    pub congestion_control: String,
+    pub udp_relay_mode: String,
+    pub up_mbps: Option<u32>,
+    pub down_mbps: Option<u32>,
+    pub obfs: String,
+    pub obfs_password: String,
+    pub idle_session_check_interval: Option<u32>,
+    pub idle_session_timeout: Option<u32>,
+    pub min_idle_session: Option<u32>,
+}
+
+impl Proxy {
+    pub fn new(kind: ProxyKind, server: String, port: u16) -> Self {
+        Self {
+            kind,
+            group_id: 0,
+            group: String::new(),
+            name: format!("{server}:{port}"),
+            server,
+            port,
+            username: String::new(),
+            password: String::new(),
+            method: String::new(),
+            uuid: String::new(),
+            alter_id: 0,
+            network: String::new(),
+            host: String::new(),
+            path: String::new(),
+            tls: false,
+            server_name: String::new(),
+            flow: String::new(),
+            fingerprint: String::new(),
+            public_key: String::new(),
+            short_id: String::new(),
+            plugin: String::new(),
+            plugin_opts: String::new(),
+            alpn: Vec::new(),
+            udp: None,
+            tcp_fast_open: None,
+            skip_cert_verify: None,
+            congestion_control: String::new(),
+            udp_relay_mode: String::new(),
+            up_mbps: None,
+            down_mbps: None,
+            obfs: String::new(),
+            obfs_password: String::new(),
+            idle_session_check_interval: None,
+            idle_session_timeout: None,
+            min_idle_session: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleBehavior {
+    Domain,
+    IpCidr,
+}

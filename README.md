@@ -4,6 +4,20 @@
   <h5><i>基于go开发的clash和singbox订阅转换工具</i></h5>
 </div>
 
+> [!NOTE]
+> `feat/rust-rewrite` 正在迁移到 Rust。当前 Rust 主干已经支持 Axum 服务、
+> 常用节点链接、Clash/sing-box 基础输出以及 MRS v1 生成。完整兼容范围和
+> 后续阶段见 [RUST_MIGRATION.md](RUST_MIGRATION.md)。
+
+### Rust 版本（迁移中）
+
+```bash
+cargo run --release -- workdir/pref.example.toml
+```
+
+默认提供 `/healthz`、`/sub` 和 `/ruleset`。迁移期间 Go 实现仍保留为输出
+兼容性基准。
+
 ## 🚀 快速开始
 ### 本地部署
 - 从Release下载对应平台的工具包 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/821869798/easysub)](https://github.com/821869798/easysub/releases)
