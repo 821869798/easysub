@@ -63,7 +63,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | PARSE-09 | [x] | Telegram SOCKS/HTTP links | tg:// and t.me parsing plus endpoint test |
 | PARSE-10 | [ ] | Netch links | Decide production need, then implement or document exclusion |
 | PARSE-11 | [x] | Snell and WireGuard inputs | Snell URLs plus Clash/sing-box WireGuard structures and exports tested |
-| PARSE-12 | [-] | Subscription containers | Plain/base64 URI lists, Clash YAML and sing-box JSON done; Surge-style configs remain |
+| PARSE-12 | [x] | Subscription containers | Plain/base64 URI lists, Clash YAML, sing-box JSON and Surge `[Proxy]` configs tested |
 
 ## Exporters
 
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 44 tests including structured subscriptions and WireGuard golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 45 tests including structured subscriptions and WireGuard golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/WireGuard/geo/final semantics covered; expand to Clash |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

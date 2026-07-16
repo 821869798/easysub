@@ -1,8 +1,17 @@
+use std::collections::HashMap;
+
 use serde_json::{Map, Value};
 
 use crate::model::{Proxy, ProxyKind};
 
 pub fn parse_subscription(content: &str, group_id: u32) -> Option<Vec<Proxy>> {
+    if content
+        .lines()
+        .any(|line| line.trim().eq_ignore_ascii_case("[proxy]"))
+    {
+        let nodes = parse_surge_proxies(content, group_id);
+        return (!nodes.is_empty()).then_some(nodes);
+    }
     let trimmed = content.trim_start();
     let has_container_key = content
         .lines()
@@ -26,6 +35,143 @@ pub fn parse_subscription(content: &str, group_id: u32) -> Option<Vec<Proxy>> {
         );
     }
     (recognized && !nodes.is_empty()).then_some(nodes)
+}
+
+fn parse_surge_proxies(content: &str, group_id: u32) -> Vec<Proxy> {
+    let mut in_proxy_section = false;
+    let mut nodes = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_proxy_section = line[1..line.len() - 1].eq_ignore_ascii_case("proxy");
+            continue;
+        }
+        if !in_proxy_section {
+            continue;
+        }
+        let Some((name, definition)) = line.split_once('=') else {
+            continue;
+        };
+        if let Some(proxy) = parse_surge_proxy(name.trim(), definition.trim(), group_id) {
+            nodes.push(proxy);
+        }
+    }
+    nodes
+}
+
+fn parse_surge_proxy(name: &str, definition: &str, group_id: u32) -> Option<Proxy> {
+    let fields = split_csv(definition);
+    if fields.len() < 3 {
+        return None;
+    }
+    let type_name = fields[0].to_ascii_lowercase();
+    let kind = match type_name.as_str() {
+        "ss" | "shadowsocks" => ProxyKind::Shadowsocks,
+        "vmess" => ProxyKind::Vmess,
+        "vless" => ProxyKind::Vless,
+        "trojan" => ProxyKind::Trojan,
+        "http" => ProxyKind::Http,
+        "https" => ProxyKind::Https,
+        "socks" | "socks5" => ProxyKind::Socks5,
+        "snell" => ProxyKind::Snell,
+        "tuic" => ProxyKind::Tuic,
+        "hysteria2" => ProxyKind::Hysteria2,
+        _ => return None,
+    };
+    let server = fields[1].clone();
+    let port = fields[2].parse::<u16>().ok()?;
+    if server.is_empty() || port == 0 {
+        return None;
+    }
+    let options: HashMap<_, _> = fields[3..]
+        .iter()
+        .filter_map(|field| field.split_once('='))
+        .map(|(key, value)| (key.trim().to_ascii_lowercase(), unquote(value.trim())))
+        .collect();
+    let option = |keys: &[&str]| {
+        keys.iter()
+            .find_map(|key| options.get(*key))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let option_bool = |keys: &[&str]| match option(keys).to_ascii_lowercase().as_str() {
+        "1" | "true" => Some(true),
+        "0" | "false" => Some(false),
+        _ => None,
+    };
+
+    let mut proxy = Proxy::new(kind, server, port);
+    proxy.group_id = group_id;
+    proxy.name = name.to_owned();
+    proxy.username = option(&["username", "user"]);
+    proxy.password = option(&["password", "psk"]);
+    proxy.method = option(&["encrypt-method", "method", "cipher"]);
+    proxy.uuid = option(&["uuid", "username"]);
+    proxy.alter_id = option(&["alter-id", "alterid"]).parse().unwrap_or_default();
+    proxy.flow = option(&["flow"]);
+    proxy.server_name = option(&["sni", "servername", "tls-host"]);
+    proxy.tls = option_bool(&["tls"]).unwrap_or(matches!(kind, ProxyKind::Trojan));
+    proxy.skip_cert_verify = option_bool(&["skip-cert-verify", "insecure"]);
+    proxy.udp = option_bool(&["udp", "udp-relay"]);
+    proxy.tcp_fast_open = option_bool(&["tfo"]);
+    proxy.plugin = option(&["plugin"]);
+    proxy.plugin_opts = option(&["plugin-opts", "plugin-opts-mode"]);
+    proxy.snell_version = option(&["version"]).parse().ok();
+    proxy.obfs = option(&["obfs"]);
+    proxy.host = option(&["obfs-host", "host"]);
+
+    if option_bool(&["ws"]).unwrap_or(false) || option(&["network"]) == "ws" {
+        proxy.network = "ws".into();
+        proxy.path = option(&["ws-path", "path"]);
+        let headers = option(&["ws-headers"]);
+        for header in headers.split(['|', '\r', '\n']) {
+            if let Some((key, value)) = header.split_once(':')
+                && key.trim().eq_ignore_ascii_case("host")
+            {
+                proxy.host = value.trim().to_owned();
+            }
+        }
+    } else {
+        proxy.network = option(&["network"]);
+    }
+    if proxy.network.is_empty()
+        && matches!(
+            kind,
+            ProxyKind::Vmess | ProxyKind::Vless | ProxyKind::Trojan
+        )
+    {
+        proxy.network = "tcp".into();
+    }
+    if kind == ProxyKind::Vless && proxy.uuid.is_empty() {
+        proxy.uuid = std::mem::take(&mut proxy.username);
+    }
+    Some(proxy)
+}
+
+fn split_csv(value: &str) -> Vec<String> {
+    let mut output = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    for character in value.chars() {
+        match character {
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            ',' if quote.is_none() => {
+                output.push(unquote(current.trim()));
+                current.clear();
+            }
+            _ => current.push(character),
+        }
+    }
+    output.push(unquote(current.trim()));
+    output
+}
+
+fn unquote(value: &str) -> String {
+    value.trim_matches(['\'', '"']).to_owned()
 }
 
 fn parse_proxy(object: &Map<String, Value>, group_id: u32) -> Option<Proxy> {
@@ -452,5 +598,38 @@ proxies:
         assert_eq!(nodes[0].server, "wg.example");
         assert_eq!(nodes[0].public_key, "public");
         assert_eq!(nodes[0].reserved, [1, 2, 3]);
+    }
+
+    #[test]
+    fn parses_surge_proxy_section() {
+        let nodes = parse_subscription(
+            r#"
+[General]
+loglevel = notify
+
+[Proxy]
+ss = ss, ss.example, 8388, encrypt-method=aes-128-gcm, password=secret, udp-relay=true
+vmess = vmess, vmess.example, 443, username=52050057-f5e1-4b9e-b789-5f49b549fd21, tls=true, sni=tls.example, ws=true, ws-path=/ws, ws-headers="Host: cdn.example"
+trojan = trojan, trojan.example, 443, password=secret, sni=tls.example, skip-cert-verify=true
+snell = snell, snell.example, 44046, psk=secret, version=3, obfs=http, obfs-host=cdn.example
+
+[Proxy Group]
+GLOBAL = select, ss, vmess, trojan
+"#,
+            9,
+        )
+        .unwrap();
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(nodes[0].kind, ProxyKind::Shadowsocks);
+        assert_eq!(nodes[0].method, "aes-128-gcm");
+        assert_eq!(nodes[0].udp, Some(true));
+        assert_eq!(nodes[1].kind, ProxyKind::Vmess);
+        assert_eq!(nodes[1].network, "ws");
+        assert_eq!(nodes[1].host, "cdn.example");
+        assert_eq!(nodes[1].path, "/ws");
+        assert!(nodes[1].tls);
+        assert_eq!(nodes[2].skip_cert_verify, Some(true));
+        assert_eq!(nodes[3].snell_version, Some(3));
+        assert!(nodes.iter().all(|node| node.group_id == 9));
     }
 }
