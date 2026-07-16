@@ -42,6 +42,12 @@ jobs:
         with:
           components: clippy,rustfmt
 
+      - name: Verify active Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+          test "$(rustc --version | awk '{print $2}')" = "1.96.0"
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
@@ -79,6 +85,12 @@ jobs:
 
       - name: Install project Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Verify active Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+          test "$(rustc --version | awk '{print $2}')" = "1.96.0"
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
