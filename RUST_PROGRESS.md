@@ -32,7 +32,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | HTTP-03 | [x] | `GET /sub` for Clash and sing-box | YAML/JSON endpoint tests |
 | HTTP-04 | [x] | `GET /ruleset` MRS response | Unit and compatibility fixtures |
 | HTTP-05 | [x] | `GET /p/*path` private subscriptions | Real `private_sub.toml` smoke test |
-| HTTP-06 | [ ] | API-mode token and local-source authorization parity | Unauthorized/authorized tests |
+| HTTP-06 | [x] | API-mode token and local-source authorization boundary | Default/local sources require token; explicit nodes and trusted private rewrites tested |
 | HTTP-07 | [-] | Query flags | `append_type` and `sort` done; insert/scv/fdn/udp/tfo/ruleset flags remain |
 | HTTP-08 | [ ] | Response metadata parity | Subscription user-info and managed headers |
 
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 22 tests after EXP-07 implementation |
+| TEST-01 | [x] | Rust unit/integration suite | 24 tests after HTTP-06 implementation |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
 | TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |

@@ -111,13 +111,15 @@ async fn private_subscription(
             .ok_or_else(|| AppError::BadRequest("private rewrite has no target".into()))?,
         url: fields.remove("url"),
         config: fields.remove("config"),
+        token: fields.remove("token"),
         append_type: take_bool(&mut fields, "append_type"),
         sort: take_bool(&mut fields, "sort"),
     };
-    subscription(
+    subscription_impl(
         State(state),
         RawQuery(Some(raw_query.to_owned())),
         Query(query),
+        true,
     )
     .await
 }
@@ -133,6 +135,7 @@ struct SubscriptionQuery {
     target: String,
     url: Option<String>,
     config: Option<String>,
+    token: Option<String>,
     #[serde(default)]
     append_type: bool,
     #[serde(default)]
@@ -144,7 +147,24 @@ async fn subscription(
     RawQuery(raw_query): RawQuery,
     Query(query): Query<SubscriptionQuery>,
 ) -> Result<Response> {
+    subscription_impl(State(state), RawQuery(raw_query), Query(query), false).await
+}
+
+async fn subscription_impl(
+    State(state): State<AppState>,
+    RawQuery(raw_query): RawQuery,
+    Query(query): Query<SubscriptionQuery>,
+    trusted: bool,
+) -> Result<Response> {
+    let authorized = trusted || request_is_authorized(&state.config, query.token.as_deref());
+    let uses_default_sources = query.url.as_deref().is_none_or(str::is_empty);
+    if state.config.common.api_mode && uses_default_sources && !authorized {
+        return Err(AppError::Unauthorized(
+            "token is required to use default subscription sources".into(),
+        ));
+    }
     let sources = sources_or_default(query.url.as_deref(), &state.config)?;
+    reject_sensitive_sources(&sources, authorized, "subscription")?;
     enforce_source_limit(&sources, &state.config)?;
     let concurrency = state
         .config
@@ -195,13 +215,23 @@ async fn subscription(
         || state.config.node_pref.append_proxy_type;
     let sort = query.sort || state.config.node_pref.sort_flag;
     let request_variables = query_variables(raw_query.as_deref());
-    let external =
-        load_external_config(&state, query.config.as_deref(), &request_variables).await?;
+    let external = load_external_config(
+        &state,
+        query.config.as_deref(),
+        &request_variables,
+        authorized,
+    )
+    .await?;
     let loaded_rulesets = if external
         .as_ref()
         .is_some_and(|external| external.enable_rule_generator)
     {
-        load_rulesets(&state, &external.as_ref().expect("checked above").rulesets).await?
+        load_rulesets(
+            &state,
+            &external.as_ref().expect("checked above").rulesets,
+            authorized,
+        )
+        .await?
     } else {
         Vec::new()
     };
@@ -218,6 +248,16 @@ async fn subscription(
                 .as_ref()
                 .and_then(|external| external.clash_rule_base.as_deref())
                 .unwrap_or(&state.config.common.clash_rule_base);
+            if external
+                .as_ref()
+                .and_then(|external| external.clash_rule_base.as_deref())
+                .is_some_and(is_sensitive_source)
+                && !authorized
+            {
+                return Err(AppError::Unauthorized(
+                    "token is required for a local Clash rule base".into(),
+                ));
+            }
             let base = rendered_base(&state, base_source, &request_variables, false).await?;
             text_response(
                 match base.as_deref() {
@@ -251,6 +291,16 @@ async fn subscription(
                 .as_ref()
                 .and_then(|external| external.singbox_rule_base.as_deref())
                 .unwrap_or(&state.config.common.singbox_rule_base);
+            if external
+                .as_ref()
+                .and_then(|external| external.singbox_rule_base.as_deref())
+                .is_some_and(is_sensitive_source)
+                && !authorized
+            {
+                return Err(AppError::Unauthorized(
+                    "token is required for a local sing-box rule base".into(),
+                ));
+            }
             let base = rendered_base(&state, base_source, &request_variables, true).await?;
             text_response(
                 match base.as_deref() {
@@ -294,6 +344,7 @@ struct RulesetQuery {
     target: String,
     url: String,
     behavior: String,
+    token: Option<String>,
 }
 
 async fn ruleset(
@@ -315,6 +366,8 @@ async fn ruleset(
         }
     };
     let sources = split_sources(&query.url);
+    let authorized = request_is_authorized(&state.config, query.token.as_deref());
+    reject_sensitive_sources(&sources, authorized, "ruleset")?;
     enforce_source_limit(&sources, &state.config)?;
     let concurrency = state
         .config
@@ -388,6 +441,23 @@ fn split_sources(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn request_is_authorized(config: &AppConfig, token: Option<&str>) -> bool {
+    !config.common.api_mode || token.is_some_and(|token| token == config.common.api_access_token)
+}
+
+fn is_sensitive_source(source: &str) -> bool {
+    source.starts_with("file://") || source.starts_with("env:") || !source.contains("://")
+}
+
+fn reject_sensitive_sources(sources: &[String], authorized: bool, kind: &str) -> Result<()> {
+    if !authorized && sources.iter().any(|source| is_sensitive_source(source)) {
+        return Err(AppError::Unauthorized(format!(
+            "token is required for local {kind} sources"
+        )));
+    }
+    Ok(())
+}
+
 fn enforce_source_limit(sources: &[String], config: &AppConfig) -> Result<()> {
     if sources.is_empty() {
         return Err(AppError::BadRequest("no source provided".into()));
@@ -429,6 +499,7 @@ async fn load_external_config(
     state: &AppState,
     requested: Option<&str>,
     request: &std::collections::HashMap<String, String>,
+    authorized: bool,
 ) -> Result<Option<ExternalConfig>> {
     let source = requested.filter(|source| !source.is_empty()).or_else(|| {
         (!state.config.common.default_external_config.is_empty())
@@ -437,6 +508,11 @@ async fn load_external_config(
     let Some(source) = source else {
         return Ok(None);
     };
+    if requested.is_some() && is_sensitive_source(source) && !authorized {
+        return Err(AppError::Unauthorized(
+            "token is required for a local external config".into(),
+        ));
+    }
     let source = state.config.resolve_source(source);
     let bytes = state
         .fetcher
@@ -455,6 +531,7 @@ async fn load_external_config(
 async fn load_rulesets(
     state: &AppState,
     specs: &[external::RulesetSpec],
+    authorized: bool,
 ) -> Result<Vec<LoadedRuleset>> {
     if specs.len() > state.config.advance.max_allowed_rulesets {
         return Err(AppError::Limit(format!(
@@ -462,6 +539,15 @@ async fn load_rulesets(
             specs.len(),
             state.config.advance.max_allowed_rulesets
         )));
+    }
+    if !authorized
+        && specs
+            .iter()
+            .any(|spec| !spec.inline && is_sensitive_source(&spec.source))
+    {
+        return Err(AppError::Unauthorized(
+            "token is required for local rulesets".into(),
+        ));
     }
     let concurrency = state
         .config
@@ -649,6 +735,8 @@ mod tests {
     #[tokio::test]
     async fn serves_private_subscription_by_internal_rewrite() {
         let mut config = fixture_config();
+        config.common.api_mode = true;
+        config.common.api_access_token = "api-secret".into();
         config.private_subscriptions = Some(
             crate::private::PrivateSubscriptions::parse(
                 r#"
@@ -681,6 +769,85 @@ value = "sub?target=clash&url={node}&config={external}"
         let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
         assert_eq!(clash["proxies"][0]["name"], "edge");
         assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
+    }
+
+    #[tokio::test]
+    async fn api_mode_protects_local_sources_but_allows_explicit_nodes() {
+        let mut config = fixture_config();
+        config.common.api_mode = true;
+        config.common.api_access_token = "api-secret".into();
+
+        let unauthorized = router(AppState::new(Arc::new(config.clone())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}", external_query("clash")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let authorized = router(AppState::new(Arc::new(config.clone())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}&token=api-secret", external_query("clash")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authorized.status(), StatusCode::OK);
+
+        let node_query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair("url", "trojan://secret@example.com:443#edge")
+            .finish();
+        let explicit_node = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{node_query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(explicit_node.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_mode_protects_default_subscriptions_and_local_rulesets() {
+        let mut config = fixture_config();
+        config.common.api_mode = true;
+        config.common.api_access_token = "api-secret".into();
+        config.common.default_url = vec!["trojan://secret@example.com:443#edge".into()];
+
+        let default_source = router(AppState::new(Arc::new(config.clone())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/sub?target=clash")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(default_source.status(), StatusCode::UNAUTHORIZED);
+
+        let ruleset_query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair("url", "file:///custom_direct.plist")
+            .append_pair("behavior", "domain")
+            .finish();
+        let local_ruleset = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/ruleset?{ruleset_query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(local_ruleset.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -729,13 +896,13 @@ value = "sub?target=clash&url={node}&config={external}"
                 inline: true,
             },
         ];
-        let loaded = load_rulesets(&state, &specs).await.unwrap();
+        let loaded = load_rulesets(&state, &specs, true).await.unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].group, "FINAL");
 
         let mut strict_config = fixture_config();
         strict_config.advance.skip_failed_links = false;
         let strict_state = AppState::new(Arc::new(strict_config)).unwrap();
-        assert!(load_rulesets(&strict_state, &specs).await.is_err());
+        assert!(load_rulesets(&strict_state, &specs, true).await.is_err());
     }
 }
