@@ -89,7 +89,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | RULE-05 | [x] | Configured skip-on-fetch-failure behavior | Subscription/ruleset tests cover skip and strict modes |
 | RULE-06 | [ ] | Full uncommon INI/group/provider syntax | Fixture-driven implementation |
 | RULE-07 | [x] | MRS v1 Domain/IPCIDR encoder | Decompressed bytes match Mihomo fixtures |
-| RULE-08 | [ ] | Large/mixed ruleset golden and memory corpus | Include exact limit behavior |
+| RULE-08 | [x] | Large/mixed ruleset golden and memory corpus | 25k mixed-rule corpus verifies deterministic Clash/sing-box output, exact 4,096-rule limit and bounded serialized output |
 
 ## Private subscriptions
 
@@ -104,11 +104,11 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 51 tests including response metadata caching, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 52 tests including response metadata caching, large mixed rulesets, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [x] | Go/Rust golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
-| TEST-05 | [x] | Core and real-service performance harnesses | Structured support: 1k parse 1.511 ms; Clash 3.933 ms; sing-box 1.827 ms; 10k MRS 3.586 ms; 16 full-ACL requests 0.697 s |
+| TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.653 ms; Clash 3.817 ms; sing-box 1.819 ms; 10k MRS 3.784 ms; 10k mixed rules 3.287 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
 | TEST-07 | [-] | CI gates | Rust 1.96 fmt/clippy/tests/Go regression/performance/size workflow added; awaiting first remote run |
 | DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |
