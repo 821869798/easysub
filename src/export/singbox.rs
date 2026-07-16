@@ -1,6 +1,9 @@
+use std::collections::{HashMap, HashSet};
+
 use serde_json::{Map, Value, json};
 
 use crate::{
+    config::RulesetTransform,
     error::{AppError, Result},
     external::{GroupKind, LoadedRuleset, ProxyGroup},
     group,
@@ -20,7 +23,18 @@ pub fn to_singbox_with_base(
     append_type: bool,
     sort: bool,
 ) -> Result<String> {
-    to_singbox_full(nodes, base, &[], &[], false, 0, append_type, sort)
+    to_singbox_full(
+        nodes,
+        base,
+        &[],
+        &[],
+        false,
+        0,
+        &HashMap::new(),
+        0,
+        append_type,
+        sort,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -31,6 +45,8 @@ pub fn to_singbox_full(
     rulesets: &[LoadedRuleset],
     overwrite_rules: bool,
     max_rules: usize,
+    ruleset_transforms: &HashMap<String, RulesetTransform>,
+    ruleset_update_interval: u64,
     append_type: bool,
     sort: bool,
 ) -> Result<String> {
@@ -111,6 +127,16 @@ pub fn to_singbox_full(
             .cloned()
             .unwrap_or_default()
     };
+    let mut remote_rule_sets = route
+        .get("rule_set")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut remote_tags: HashSet<String> = remote_rule_sets
+        .iter()
+        .filter_map(|ruleset| ruleset.get("tag").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+        .collect();
     let mut generated = 0usize;
     let mut final_outbound = None;
     for ruleset in rulesets {
@@ -122,6 +148,7 @@ pub fn to_singbox_full(
         } else {
             max_rules - generated
         };
+        let mut rule_objects = Vec::new();
         let mut rule_object = Map::new();
         for rule in parse_common_rules(&ruleset.content, ruleset.format, remaining) {
             if matches!(rule.kind.as_str(), "FINAL" | "MATCH") {
@@ -129,6 +156,35 @@ pub fn to_singbox_full(
                 continue;
             }
             let Some(value) = rule.value else { continue };
+            if let Some(transform) = ruleset_transforms.get(&rule.kind.to_ascii_lowercase()) {
+                if !rule_object.is_empty() {
+                    finish_rule(&mut rule_object, &ruleset.group);
+                    rule_objects.push(Value::Object(std::mem::take(&mut rule_object)));
+                }
+                let kind = rule.kind.to_ascii_lowercase();
+                let value = value.to_ascii_lowercase();
+                let tag = format!("{kind}-{value}");
+                if remote_tags.insert(tag.clone()) {
+                    remote_rule_sets.push(json!({
+                        "tag": tag,
+                        "type": "remote",
+                        "format": "binary",
+                        "url": transform.url_format.replace("%s", &value),
+                        "http_client": {"detour": "DIRECT"},
+                        "update_interval": format_ruleset_interval(ruleset_update_interval)
+                    }));
+                }
+                rule_objects.push(json!({
+                    "action": "route",
+                    "rule_set": tag,
+                    "outbound": ruleset.group
+                }));
+                generated += 1;
+                if max_rules > 0 && generated >= max_rules {
+                    break;
+                }
+                continue;
+            }
             let field = match rule.kind.as_str() {
                 "DOMAIN" => "domain",
                 "DOMAIN-SUFFIX" => "domain_suffix",
@@ -140,6 +196,9 @@ pub fn to_singbox_full(
                 "DST-PORT" => "port",
                 "NETWORK" => "network",
                 "PROTOCOL" => "protocol",
+                "GEOIP" => "geoip",
+                "SRC-GEOIP" => "source_geoip",
+                "GEOSITE" => "geosite",
                 _ => continue,
             };
             rule_object
@@ -154,12 +213,15 @@ pub fn to_singbox_full(
             }
         }
         if !rule_object.is_empty() {
-            rule_object.insert("action".into(), "route".into());
-            rule_object.insert("outbound".into(), ruleset.group.clone().into());
-            route_rules.push(Value::Object(rule_object));
+            finish_rule(&mut rule_object, &ruleset.group);
+            rule_objects.push(Value::Object(rule_object));
         }
+        route_rules.extend(rule_objects);
     }
     route.insert("rules".into(), Value::Array(route_rules));
+    if !remote_rule_sets.is_empty() {
+        route.insert("rule_set".into(), Value::Array(remote_rule_sets));
+    }
     route.insert(
         "final".into(),
         final_outbound
@@ -174,6 +236,28 @@ pub fn to_singbox_full(
     serde_json::to_string(&config).map_err(|error| {
         AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
     })
+}
+
+fn finish_rule(rule: &mut Map<String, Value>, outbound: &str) {
+    rule.insert("action".into(), "route".into());
+    rule.insert("outbound".into(), outbound.into());
+}
+
+fn format_ruleset_interval(seconds: u64) -> String {
+    let seconds = if seconds == 0 {
+        5 * 24 * 60 * 60
+    } else {
+        seconds
+    };
+    if seconds % (24 * 60 * 60) == 0 {
+        format!("{}d", seconds / (24 * 60 * 60))
+    } else if seconds % (60 * 60) == 0 {
+        format!("{}h", seconds / (60 * 60))
+    } else if seconds % 60 == 0 {
+        format!("{}m", seconds / 60)
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 fn proxy_value(proxy: &Proxy) -> Value {
@@ -353,5 +437,78 @@ fn insert_nonempty(object: &mut Map<String, Value>, key: &str, value: &str) {
 fn insert_duration(object: &mut Map<String, Value>, key: &str, value: Option<u32>) {
     if let Some(value) = value {
         insert(object, key, &format!("{value}s"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::external::RulesetFormat;
+
+    use super::*;
+
+    #[test]
+    fn converts_geo_rules_to_remote_binary_rulesets() {
+        let rulesets = [
+            LoadedRuleset {
+                group: "DIRECT".into(),
+                content: "[]GEOIP,CN".into(),
+                format: RulesetFormat::Surge,
+            },
+            LoadedRuleset {
+                group: "PROXY".into(),
+                content: "[]GEOSITE,OPENAI".into(),
+                format: RulesetFormat::Surge,
+            },
+        ];
+        let transforms = HashMap::from([
+            (
+                "geoip".into(),
+                RulesetTransform {
+                    name: "geoip".into(),
+                    behavior: "ipcidr".into(),
+                    url_format: "https://example.test/geoip/%s.srs".into(),
+                },
+            ),
+            (
+                "geosite".into(),
+                RulesetTransform {
+                    name: "geosite".into(),
+                    behavior: "domain".into(),
+                    url_format: "https://example.test/geosite/%s.srs".into(),
+                },
+            ),
+        ]);
+        let output = to_singbox_full(
+            &[],
+            Some(
+                r#"{"route":{"rules":[],"rule_set":[{"tag":"existing","type":"local","path":"existing.srs"}]}}"#,
+            ),
+            &[],
+            &rulesets,
+            false,
+            0,
+            &transforms,
+            432_000,
+            false,
+            false,
+        )
+        .unwrap();
+        let config: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(config["route"]["rules"][0]["rule_set"], "geoip-cn");
+        assert_eq!(config["route"]["rules"][1]["rule_set"], "geosite-openai");
+        let rule_sets = config["route"]["rule_set"].as_array().unwrap();
+        assert!(rule_sets.iter().any(|ruleset| ruleset["tag"] == "existing"));
+        let geoip = rule_sets
+            .iter()
+            .find(|ruleset| ruleset["tag"] == "geoip-cn")
+            .unwrap();
+        assert_eq!(geoip["url"], "https://example.test/geoip/cn.srs");
+        assert_eq!(geoip["http_client"]["detour"], "DIRECT");
+        assert_eq!(geoip["update_interval"], "5d");
+        let geosite = rule_sets
+            .iter()
+            .find(|ruleset| ruleset["tag"] == "geosite-openai")
+            .unwrap();
+        assert_eq!(geosite["url"], "https://example.test/geosite/openai.srs");
     }
 }

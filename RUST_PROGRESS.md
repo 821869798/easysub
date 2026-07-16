@@ -75,7 +75,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
 | EXP-05 | [-] | Group types | select/url-test/fallback/load-balance/relay done; SSID/provider options remain |
 | EXP-06 | [-] | Rule injection | Common domain/IP/process/port rules done |
-| EXP-07 | [ ] | sing-box GEOIP/GEOSITE transformations | Required for full existing-config parity |
+| EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
 | EXP-08 | [ ] | Clash rule-provider optimization | Optional performance feature; correctness must not depend on it |
 
 ## External configuration and rulesets
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 21 tests after RULE-05 implementation |
+| TEST-01 | [x] | Rust unit/integration suite | 22 tests after EXP-07 implementation |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
 | TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |

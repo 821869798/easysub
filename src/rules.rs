@@ -103,6 +103,8 @@ fn parse_common_line(line: &str, format: RulesetFormat) -> Option<RuleLine> {
                 "IP-CIDR6",
                 "SRC-IP-CIDR",
                 "GEOIP",
+                "SRC-GEOIP",
+                "GEOSITE",
                 "MATCH",
                 "FINAL",
                 "PROCESS-NAME",
