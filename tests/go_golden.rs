@@ -52,6 +52,19 @@ async fn matches_go_singbox_golden_semantics() {
     hysteria.server_name = "hy2.sni.com".into();
     hysteria.fingerprint = "firefox".into();
 
+    let mut wireguard = Proxy::new(ProxyKind::Wireguard, "1.2.3.4".into(), 51820);
+    wireguard.name = "TestWG".into();
+    wireguard.wireguard_address = vec!["10.0.0.2/32".into(), "fd00::2/128".into()];
+    wireguard.private_key = "aGFoYWhhaGFoYWhhaGFoYWhhaGFoYWhhaGFoYWhhaGE=".into();
+    wireguard.public_key = "d293b3d3b3d3b3d3b3d3b3d3b3d3b3d3b3d3b3d2b2c=".into();
+    wireguard.allowed_ips = vec!["0.0.0.0/0".into(), "::/0".into()];
+    wireguard.mtu = Some(1420);
+    wireguard.reserved = vec![1, 2, 3];
+
+    let mut snell = Proxy::new(ProxyKind::Snell, "snell.test.com".into(), 8080);
+    snell.name = "TestSnell".into();
+    snell.password = "snell-password".into();
+
     let rulesets = [
         LoadedRuleset {
             group: "proxy".into(),
@@ -71,7 +84,7 @@ async fn matches_go_singbox_golden_semantics() {
     ];
     let rust: Value = serde_json::from_str(
         &to_singbox_full(
-            &[vmess, trojan, hysteria],
+            &[wireguard, vmess, trojan, hysteria, snell],
             Some(&base),
             &[],
             &rulesets,
@@ -104,6 +117,27 @@ async fn matches_go_singbox_golden_semantics() {
         tagged(&go["outbounds"], "TestTrojan")["tls"]["alpn"]
     );
     assert_eq!(rust["route"]["final"], go["route"]["final"]);
+
+    let rust_wireguard = tagged(&rust["endpoints"], "TestWG");
+    let go_wireguard = tagged(&go["endpoints"], "TestWG");
+    assert_eq!(rust_wireguard["address"], go_wireguard["address"]);
+    assert_eq!(rust_wireguard["private_key"], go_wireguard["private_key"]);
+    assert_eq!(rust_wireguard["mtu"], go_wireguard["mtu"]);
+    assert_eq!(
+        rust_wireguard["peers"][0]["allowed_ips"],
+        go_wireguard["peers"][0]["allowed_ips"]
+    );
+    assert_eq!(
+        rust_wireguard["peers"][0]["reserved"],
+        go_wireguard["peers"][0]["reserved"]
+    );
+    assert!(
+        rust["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|outbound| outbound["tag"] != "TestSnell")
+    );
 
     for tag in ["geosite-google", "geoip-cn"] {
         let rust_ruleset = tagged(&rust["route"]["rule_set"], tag);

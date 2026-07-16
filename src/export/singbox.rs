@@ -50,12 +50,20 @@ pub fn to_singbox_full(
     append_type: bool,
     sort: bool,
 ) -> Result<String> {
-    let nodes = prepare_nodes(nodes, append_type, sort);
+    let mut nodes = prepare_nodes(nodes, append_type, sort);
+    if nodes.iter().any(|node| node.kind == ProxyKind::Snell) {
+        nodes.retain(|node| node.kind != ProxyKind::Snell);
+    }
     let mut outbounds = vec![
         json!({"type": "direct", "tag": "DIRECT"}),
         json!({"type": "block", "tag": "REJECT"}),
     ];
-    outbounds.extend(nodes.iter().map(proxy_value));
+    outbounds.extend(
+        nodes
+            .iter()
+            .filter(|node| node.kind != ProxyKind::Wireguard)
+            .map(proxy_value),
+    );
     if groups.is_empty() {
         let names: Vec<_> = nodes
             .iter()
@@ -113,6 +121,20 @@ pub fn to_singbox_full(
         .as_object_mut()
         .ok_or_else(|| AppError::Conversion("sing-box base must be a JSON object".into()))?;
     object.insert("outbounds".into(), Value::Array(outbounds));
+    let mut endpoints = object
+        .get("endpoints")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    endpoints.extend(
+        nodes
+            .iter()
+            .filter(|node| node.kind == ProxyKind::Wireguard)
+            .map(wireguard_value),
+    );
+    if !endpoints.is_empty() {
+        object.insert("endpoints".into(), Value::Array(endpoints));
+    }
     let route = object
         .entry("route")
         .or_insert_with(|| json!({}))
@@ -363,6 +385,7 @@ fn proxy_value(proxy: &Proxy) -> Value {
             insert_nonempty(&mut object, "username", &proxy.username);
             insert_nonempty(&mut object, "password", &proxy.password);
         }
+        ProxyKind::Snell => return Value::Null,
         ProxyKind::Wireguard => insert(&mut object, "type", "wireguard"),
     }
     if proxy.udp == Some(false) {
@@ -372,6 +395,34 @@ fn proxy_value(proxy: &Proxy) -> Value {
         object.insert("tcp_fast_open".into(), tfo.into());
     }
     Value::Object(object)
+}
+
+fn wireguard_value(proxy: &Proxy) -> Value {
+    let mut peer = Map::new();
+    insert(&mut peer, "address", &proxy.server);
+    peer.insert("port".into(), proxy.port.into());
+    insert_nonempty(&mut peer, "public_key", &proxy.public_key);
+    insert_nonempty(&mut peer, "pre_shared_key", &proxy.pre_shared_key);
+    if !proxy.allowed_ips.is_empty() {
+        peer.insert("allowed_ips".into(), json!(proxy.allowed_ips));
+    }
+    if let Some(keepalive) = proxy.persistent_keepalive {
+        insert(&mut peer, "persistent_keepalive", &format!("{keepalive}s"));
+    }
+    if !proxy.reserved.is_empty() {
+        peer.insert("reserved".into(), json!(proxy.reserved));
+    }
+
+    let mut endpoint = Map::new();
+    insert(&mut endpoint, "type", "wireguard");
+    insert(&mut endpoint, "tag", &proxy.name);
+    endpoint.insert("address".into(), json!(proxy.wireguard_address));
+    insert_nonempty(&mut endpoint, "private_key", &proxy.private_key);
+    endpoint.insert("peers".into(), Value::Array(vec![Value::Object(peer)]));
+    if let Some(mtu) = proxy.mtu {
+        endpoint.insert("mtu".into(), mtu.into());
+    }
+    Value::Object(endpoint)
 }
 
 fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {

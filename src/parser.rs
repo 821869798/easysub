@@ -44,6 +44,8 @@ pub fn parse_node(input: &str, group_id: u32) -> Result<Proxy> {
         parse_url_proxy(input, ProxyKind::Hysteria2)?
     } else if input.starts_with("socks://") || input.starts_with("socks5://") {
         parse_url_proxy(input, ProxyKind::Socks5)?
+    } else if input.starts_with("snell://") {
+        parse_url_proxy(input, ProxyKind::Snell)?
     } else if input.starts_with("http://") || input.starts_with("https://") {
         parse_url_proxy(
             input,
@@ -61,6 +63,9 @@ pub fn parse_node(input: &str, group_id: u32) -> Result<Proxy> {
 }
 
 pub fn parse_subscription(content: &str, first_group_id: u32) -> Result<Vec<Proxy>> {
+    if let Some(nodes) = crate::structured::parse_subscription(content, first_group_id) {
+        return Ok(nodes);
+    }
     let decoded;
     let text = if content
         .lines()
@@ -105,6 +110,7 @@ pub fn looks_like_proxy(value: &str) -> bool {
         "hy2://",
         "socks://",
         "socks5://",
+        "snell://",
         "https://t.me/socks",
         "tg://socks",
         "https://t.me/http",
@@ -496,12 +502,30 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
             proxy.fast_open = parse_bool(&value(&query, &["fast_open"]));
             proxy.tls = true;
         }
+        ProxyKind::Snell => {
+            if proxy.password.is_empty() {
+                proxy.password = if proxy.username.is_empty() {
+                    value(&query, &["psk", "password"])
+                } else {
+                    std::mem::take(&mut proxy.username)
+                };
+            }
+            proxy.snell_version = value(&query, &["version"]).parse().ok();
+            proxy.obfs = value(&query, &["obfs"]);
+            proxy.host = value(&query, &["obfs-host", "obfs_host", "host"]);
+        }
         _ => {}
     }
 
     proxy.server_name = value(&query, &["sni", "peer", "servername"]);
-    proxy.host = value(&query, &["host"]);
-    proxy.path = value(&query, &["path", "wspath", "serviceName", "key"]);
+    let host = value(&query, &["host"]);
+    if !host.is_empty() {
+        proxy.host = host;
+    }
+    let path = value(&query, &["path", "wspath", "serviceName", "key"]);
+    if !path.is_empty() {
+        proxy.path = path;
+    }
     if proxy.network.is_empty() {
         proxy.network = value(&query, &["type", "network"]);
     }
@@ -795,5 +819,19 @@ mod tests {
         .unwrap();
         assert_eq!(http.kind, ProxyKind::Https);
         assert!(http.tls);
+    }
+
+    #[test]
+    fn parses_snell_url() {
+        let proxy = parse_node(
+            "snell://secret@snell.example:44046?version=3&obfs=http&obfs-host=cdn.example#snell",
+            0,
+        )
+        .unwrap();
+        assert_eq!(proxy.kind, ProxyKind::Snell);
+        assert_eq!(proxy.password, "secret");
+        assert_eq!(proxy.snell_version, Some(3));
+        assert_eq!(proxy.obfs, "http");
+        assert_eq!(proxy.host, "cdn.example");
     }
 }

@@ -62,16 +62,16 @@ The rewrite is currently a usable development implementation, not yet a complete
 | PARSE-08 | [x] | HTTP/HTTPS/SOCKS5 URL nodes | Basic authentication supported |
 | PARSE-09 | [x] | Telegram SOCKS/HTTP links | tg:// and t.me parsing plus endpoint test |
 | PARSE-10 | [ ] | Netch links | Decide production need, then implement or document exclusion |
-| PARSE-11 | [ ] | Snell and WireGuard inputs | Model/export support is incomplete without parsers |
-| PARSE-12 | [-] | Subscription containers | Plain/base64 URI lists done; structured config formats remain |
+| PARSE-11 | [x] | Snell and WireGuard inputs | Snell URLs plus Clash/sing-box WireGuard structures and exports tested |
+| PARSE-12 | [-] | Subscription containers | Plain/base64 URI lists, Clash YAML and sing-box JSON done; Surge-style configs remain |
 
 ## Exporters
 
 | ID | Status | Item | Notes |
 |---|---|---|---|
 | EXP-01 | [x] | Deterministic node names and ordering | Duplicate-name tests |
-| EXP-02 | [-] | Clash node output | Common protocols done; missing protocol fields track parser rows |
-| EXP-03 | [-] | sing-box node output | Common protocols done; missing protocol fields track parser rows |
+| EXP-02 | [x] | Clash node output | Modern URI protocols plus structured Snell/WireGuard fields tested |
+| EXP-03 | [x] | sing-box node output | Modern URI protocols and WireGuard endpoints tested; Snell intentionally skipped as unsupported |
 | EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
 | EXP-05 | [-] | Group types | select/url-test/fallback/load-balance/relay done; SSID/provider options remain |
 | EXP-06 | [-] | Rule injection | Common domain/IP/process/port rules done |
@@ -104,11 +104,11 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 41 tests including golden, property and endpoint suites |
+| TEST-01 | [x] | Rust unit/integration suite | 44 tests including structured subscriptions and WireGuard golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
-| TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
+| TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/WireGuard/geo/final semantics covered; expand to Clash |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
-| TEST-05 | [x] | Core and real-service performance harnesses | Latest deps: 1k parse 1.410 ms; Clash 3.973 ms; sing-box 1.671 ms; 10k MRS 3.755 ms; 16 full-ACL requests 0.697 s |
+| TEST-05 | [x] | Core and real-service performance harnesses | Structured support: 1k parse 1.511 ms; Clash 3.933 ms; sing-box 1.827 ms; 10k MRS 3.586 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
 | TEST-07 | [-] | CI gates | Rust 1.96 fmt/clippy/tests/Go regression/performance/size workflow added; awaiting first remote run |
 | DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |

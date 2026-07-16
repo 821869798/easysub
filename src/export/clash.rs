@@ -259,7 +259,54 @@ fn proxy_value(proxy: &Proxy) -> Value {
             insert_nonempty(&mut object, "username", &proxy.username);
             insert_nonempty(&mut object, "password", &proxy.password);
         }
-        ProxyKind::Wireguard => insert(&mut object, "type", "wireguard"),
+        ProxyKind::Snell => {
+            insert(&mut object, "type", "snell");
+            insert(&mut object, "psk", &proxy.password);
+            if let Some(version) = proxy.snell_version {
+                object.insert("version".into(), version.into());
+            }
+            if !proxy.obfs.is_empty() || !proxy.host.is_empty() {
+                object.insert(
+                    "obfs-opts".into(),
+                    json!({"mode": proxy.obfs, "host": proxy.host}),
+                );
+            }
+        }
+        ProxyKind::Wireguard => {
+            insert(&mut object, "type", "wireguard");
+            if let Some(address) = proxy
+                .wireguard_address
+                .iter()
+                .find(|address| !address.contains(':'))
+            {
+                insert(&mut object, "ip", address);
+            }
+            if let Some(address) = proxy
+                .wireguard_address
+                .iter()
+                .find(|address| address.contains(':'))
+            {
+                insert(&mut object, "ipv6", address);
+            }
+            insert_nonempty(&mut object, "private-key", &proxy.private_key);
+            insert_nonempty(&mut object, "public-key", &proxy.public_key);
+            insert_nonempty(&mut object, "pre-shared-key", &proxy.pre_shared_key);
+            if !proxy.allowed_ips.is_empty() {
+                object.insert("allowed-ips".into(), json!(proxy.allowed_ips));
+            }
+            if !proxy.dns_servers.is_empty() {
+                object.insert("dns".into(), json!(proxy.dns_servers));
+            }
+            if let Some(mtu) = proxy.mtu {
+                object.insert("mtu".into(), mtu.into());
+            }
+            if let Some(keepalive) = proxy.persistent_keepalive {
+                object.insert("persistent-keepalive".into(), keepalive.into());
+            }
+            if !proxy.reserved.is_empty() {
+                object.insert("reserved".into(), json!(proxy.reserved));
+            }
+        }
     }
     if let Some(udp) = proxy.udp {
         object.insert("udp".into(), udp.into());

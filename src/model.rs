@@ -10,6 +10,7 @@ pub enum ProxyKind {
     Http,
     Https,
     Socks5,
+    Snell,
     Wireguard,
     Tuic,
     Anytls,
@@ -26,6 +27,7 @@ impl ProxyKind {
             Self::Http => "HTTP",
             Self::Https => "HTTPS",
             Self::Socks5 => "SOCKS5",
+            Self::Snell => "Snell",
             Self::Wireguard => "WireGuard",
             Self::Tuic => "TUIC",
             Self::Anytls => "AnyTLS",
@@ -83,6 +85,15 @@ pub struct Proxy {
     pub idle_session_check_interval: Option<u32>,
     pub idle_session_timeout: Option<u32>,
     pub min_idle_session: Option<u32>,
+    pub snell_version: Option<u16>,
+    pub wireguard_address: Vec<String>,
+    pub private_key: String,
+    pub pre_shared_key: String,
+    pub allowed_ips: Vec<String>,
+    pub dns_servers: Vec<String>,
+    pub mtu: Option<u16>,
+    pub persistent_keepalive: Option<u16>,
+    pub reserved: Vec<u8>,
 }
 
 impl Proxy {
@@ -135,6 +146,15 @@ impl Proxy {
             idle_session_check_interval: None,
             idle_session_timeout: None,
             min_idle_session: None,
+            snell_version: None,
+            wireguard_address: Vec::new(),
+            private_key: String::new(),
+            pre_shared_key: String::new(),
+            allowed_ips: vec!["0.0.0.0/0".into(), "::/0".into()],
+            dns_servers: Vec::new(),
+            mtu: None,
+            persistent_keepalive: None,
+            reserved: Vec::new(),
         }
     }
 }
