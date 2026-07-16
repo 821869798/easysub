@@ -601,11 +601,13 @@ mod tests {
         let rulesets = [
             LoadedRuleset {
                 group: "DIRECT".into(),
+                source: String::new(),
                 content: "[]GEOIP,CN".into(),
                 format: RulesetFormat::Surge,
             },
             LoadedRuleset {
                 group: "PROXY".into(),
+                source: String::new(),
                 content: "[]GEOSITE,OPENAI".into(),
                 format: RulesetFormat::Surge,
             },
@@ -694,6 +696,7 @@ mod tests {
     fn exports_extended_rules_with_native_types_and_or_semantics() {
         let rulesets = [LoadedRuleset {
             group: "PROXY".into(),
+            source: String::new(),
             content: [
                 "DOMAIN,Example.COM",
                 "IP-VERSION,6",

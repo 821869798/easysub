@@ -19,6 +19,12 @@ cargo run --release -- workdir/pref.example.toml
 兼容性基准。部署、资源限制、日志、优雅停机及升级回滚见
 [Rust 版本部署与运维](docs/rust-operations.md)。
 
+Clash 规则集兼容 `clashRSO`、`clashRSOH` 和 `clashGVR`：分别控制
+rule-provider 聚合、回指 `/ruleset` 的 HTTP MRS provider，以及
+GEOIP/GEOSITE 到远程 MRS 的转换。Stash 客户端会强制使用 HTTP/MRS，
+不会生成不受支持的 inline `payload`。反向代理部署应转发 `Host` 和
+`X-Forwarded-Proto`；也可设置 `SUB_FORCE_HTTPS=true` 强制 provider 使用 HTTPS。
+
 ## 🚀 快速开始
 ### 本地部署
 - 从Release下载对应平台的工具包 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/821869798/easysub)](https://github.com/821869798/easysub/releases)

@@ -13,6 +13,7 @@ fn large_mixed_ruleset_is_deterministic_and_strictly_bounded() {
     assert!(expected_clash.len() > OUTPUT_LIMIT);
     let rulesets = [LoadedRuleset {
         group: "PROXY".into(),
+        source: String::new(),
         content,
         format: RulesetFormat::Surge,
     }];

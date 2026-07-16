@@ -33,16 +33,19 @@ async fn matches_go_singbox_golden_semantics() {
     let rulesets = [
         LoadedRuleset {
             group: "proxy".into(),
+            source: String::new(),
             content: "[]GEOSITE,google".into(),
             format: RulesetFormat::Surge,
         },
         LoadedRuleset {
             group: "DIRECT".into(),
+            source: String::new(),
             content: "[]GEOIP,cn".into(),
             format: RulesetFormat::Surge,
         },
         LoadedRuleset {
             group: "proxy".into(),
+            source: String::new(),
             content: "[]FINAL,proxy".into(),
             format: RulesetFormat::Surge,
         },
@@ -144,11 +147,13 @@ async fn matches_go_clash_golden_semantics() {
     let rulesets = [
         LoadedRuleset {
             group: "proxy".into(),
+            source: String::new(),
             content: "DOMAIN-SUFFIX,example.com\nIP-CIDR,10.0.0.0/8,no-resolve".into(),
             format: RulesetFormat::Surge,
         },
         LoadedRuleset {
             group: "DIRECT".into(),
+            source: String::new(),
             content: "[]FINAL".into(),
             format: RulesetFormat::Surge,
         },

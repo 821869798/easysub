@@ -52,6 +52,7 @@ pub struct RulesetSpec {
 #[derive(Debug, Clone)]
 pub struct LoadedRuleset {
     pub group: String,
+    pub source: String,
     pub content: String,
     pub format: RulesetFormat,
 }

@@ -74,6 +74,7 @@ pub struct NodePreferences {
     pub skip_cert_verify_flag: Option<bool>,
     pub clash_ruleset_optimize: bool,
     pub clash_ruleset_optimize_to_http: bool,
+    pub clash_geo_convert_ruleset: bool,
     pub singbox_add_clash_modes: bool,
     pub clash_rulesets: HashMap<String, RulesetTransform>,
     pub singbox_rulesets: HashMap<String, RulesetTransform>,

@@ -76,7 +76,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and OR-preserving field buckets |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
-| EXP-08 | [~] | Clash rule-provider optimization | Intentionally omitted: inline rules remain the correctness path and measured conversion performance does not justify a second output mode |
+| EXP-08 | [x] | Clash rule-provider optimization | `clashRSO`, `clashRSOH` and `clashGVR` support inline providers, HTTP MRS providers and GEOIP/GEOSITE conversion; Stash is forced to HTTP/MRS |
 
 ## External configuration and rulesets
 
@@ -90,6 +90,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | RULE-06 | [x] | Full uncommon INI/group/provider syntax | All Go-supported group kinds, provider selectors, timing fields and every checked-in deployment INI are fixture-tested |
 | RULE-07 | [x] | MRS v1 Domain/IPCIDR encoder | Decompressed bytes match Mihomo fixtures |
 | RULE-08 | [x] | Large/mixed ruleset golden and memory corpus | 25k mixed-rule corpus verifies deterministic Clash/sing-box output, exact 4,096-rule limit and bounded serialized output |
+| RULE-09 | [x] | Downloadable Clash HTTP MRS providers | Checked-in Stash rewrite emits no payload; all 25 generated `/ruleset` URLs return non-empty MRS |
 
 ## Private subscriptions
 
@@ -98,13 +99,13 @@ The rewrite is currently a usable development implementation, not yet a complete
 | PRIV-01 | [x] | `private_sub.toml` loading | Relative to main config |
 | PRIV-02 | [x] | Ordered nested variables and form encoding | Unit test |
 | PRIV-03 | [x] | `EASYSUB_PRIVATE` content override | Same startup path as file content |
-| PRIV-04 | [x] | Internal `/p/*path` rewrite | No loopback HTTP request |
+| PRIV-04 | [x] | Internal `/p/*path` rewrite | No loopback HTTP request; checked-in Stash rewrite and generated MRS endpoint are exercised end to end |
 
 ## Verification and release
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 57 tests including full external INI fixtures, extended typed rules, metadata caching, large mixed rulesets, Netch and legacy golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 61 tests including full external INI fixtures, rule-provider modes, metadata caching, large mixed rulesets, Netch and legacy golden semantics |
 | TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
 | TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

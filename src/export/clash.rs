@@ -1,6 +1,9 @@
+use std::{collections::HashMap, path::Path};
+
 use serde_json::{Map, Value, json};
 
 use crate::{
+    config::RulesetTransform,
     error::{AppError, Result},
     external::{GroupKind, LoadedRuleset, ProxyGroup},
     group,
@@ -9,6 +12,19 @@ use crate::{
 };
 
 use super::prepare_nodes;
+
+const OPTIMIZE_MIN_COUNT: usize = 8;
+
+#[derive(Debug, Clone, Default)]
+pub struct ClashRulesetOptions {
+    pub optimize: bool,
+    pub optimize_to_http: bool,
+    pub geo_convert: bool,
+    pub provider_base_url: Option<String>,
+    pub access_token: Option<String>,
+    pub update_interval: u64,
+    pub geo_transforms: HashMap<String, RulesetTransform>,
+}
 
 pub fn to_clash(nodes: &[Proxy], append_type: bool, sort: bool) -> Result<String> {
     to_clash_with_base(nodes, None, append_type, sort)
@@ -33,6 +49,31 @@ pub fn to_clash_full(
     max_rules: usize,
     append_type: bool,
     sort: bool,
+) -> Result<String> {
+    to_clash_full_with_options(
+        nodes,
+        base,
+        groups,
+        rulesets,
+        overwrite_rules,
+        max_rules,
+        append_type,
+        sort,
+        &ClashRulesetOptions::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn to_clash_full_with_options(
+    nodes: &[Proxy],
+    base: Option<&str>,
+    groups: &[ProxyGroup],
+    rulesets: &[LoadedRuleset],
+    overwrite_rules: bool,
+    max_rules: usize,
+    append_type: bool,
+    sort: bool,
+    ruleset_options: &ClashRulesetOptions,
 ) -> Result<String> {
     let nodes = prepare_nodes(nodes, append_type, sort);
     let proxies: Vec<Value> = nodes.iter().map(proxy_value).collect();
@@ -117,8 +158,13 @@ pub fn to_clash_full(
                 .cloned()
                 .unwrap_or_default()
         };
+        let mut providers = object
+            .get("rule-providers")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
         let mut generated = 0usize;
-        for ruleset in rulesets {
+        for (ruleset_index, ruleset) in rulesets.iter().enumerate() {
             let remaining = if max_rules == 0 {
                 0
             } else {
@@ -127,38 +173,269 @@ pub fn to_clash_full(
             if max_rules > 0 && remaining == 0 {
                 break;
             }
-            for rule in parse_common_rules_filtered(
+            let rules = parse_common_rules_filtered(
                 &ruleset.content,
                 ruleset.format,
                 remaining,
                 is_clash_rule,
-            ) {
-                let kind = if rule.kind == "FINAL" {
-                    "MATCH"
-                } else {
-                    &rule.kind
-                };
-                let mut rendered = kind.to_owned();
-                if let Some(value) = rule.value {
-                    rendered.push(',');
-                    rendered.push_str(&value);
-                }
-                rendered.push(',');
-                rendered.push_str(&ruleset.group);
-                if rule.no_resolve {
-                    rendered.push_str(",no-resolve");
-                }
-                output_rules.push(Value::String(rendered));
-                generated += 1;
-                if max_rules > 0 && generated >= max_rules {
-                    break;
-                }
+            );
+            generated += rules.len();
+            if ruleset_options.geo_convert
+                && ruleset.content.starts_with("[]")
+                && rules.len() == 1
+                && append_geo_provider(
+                    &rules[0],
+                    &ruleset.group,
+                    ruleset_options,
+                    &mut providers,
+                    &mut output_rules,
+                )
+            {
+                continue;
             }
+            append_ruleset(
+                ruleset,
+                ruleset_index,
+                &rules,
+                ruleset_options,
+                &mut providers,
+                &mut output_rules,
+            )?;
         }
         object.insert("rules".into(), Value::Array(output_rules));
+        if !providers.is_empty() {
+            object.insert("rule-providers".into(), Value::Object(providers));
+        }
     }
     serde_yaml::to_string(&config)
         .map_err(|error| AppError::Conversion(format!("Clash YAML serialization failed: {error}")))
+}
+
+fn append_ruleset(
+    ruleset: &LoadedRuleset,
+    ruleset_index: usize,
+    rules: &[crate::rules::RuleLine],
+    options: &ClashRulesetOptions,
+    providers: &mut Map<String, Value>,
+    output: &mut Vec<Value>,
+) -> Result<()> {
+    let domain_payload: Vec<String> = rules
+        .iter()
+        .filter_map(|rule| match (rule.kind.as_str(), rule.value.as_deref()) {
+            ("DOMAIN", Some(value)) if !value.is_empty() => Some(value.to_owned()),
+            ("DOMAIN-SUFFIX", Some(value)) if !value.is_empty() => Some(format!(
+                "+.{}",
+                value.trim_start_matches("+.").trim_start_matches('.')
+            )),
+            _ => None,
+        })
+        .collect();
+    let ipcidr_payload: Vec<String> = rules
+        .iter()
+        .filter_map(|rule| {
+            (matches!(rule.kind.as_str(), "IP-CIDR" | "IP-CIDR6") && rule.no_resolve)
+                .then(|| rule.value.clone())
+                .flatten()
+        })
+        .collect();
+    let optimize_domain = options.optimize && domain_payload.len() >= OPTIMIZE_MIN_COUNT;
+    let optimize_ipcidr = options.optimize && ipcidr_payload.len() >= OPTIMIZE_MIN_COUNT;
+    if optimize_domain {
+        let name = insert_optimized_provider(
+            ruleset,
+            ruleset_index,
+            "domain",
+            domain_payload,
+            options,
+            providers,
+        )?;
+        output.push(Value::String(format!("RULE-SET,{name},{}", ruleset.group)));
+    }
+    if optimize_ipcidr {
+        let name = insert_optimized_provider(
+            ruleset,
+            ruleset_index,
+            "ipcidr",
+            ipcidr_payload,
+            options,
+            providers,
+        )?;
+        output.push(Value::String(format!(
+            "RULE-SET,{name},{},no-resolve",
+            ruleset.group
+        )));
+    }
+    for rule in rules {
+        let optimized = (optimize_domain
+            && matches!(rule.kind.as_str(), "DOMAIN" | "DOMAIN-SUFFIX")
+            && rule.value.is_some())
+            || (optimize_ipcidr
+                && matches!(rule.kind.as_str(), "IP-CIDR" | "IP-CIDR6")
+                && rule.no_resolve
+                && rule.value.is_some());
+        if !optimized {
+            output.push(Value::String(render_rule(rule, &ruleset.group)));
+        }
+    }
+    Ok(())
+}
+
+fn insert_optimized_provider(
+    ruleset: &LoadedRuleset,
+    ruleset_index: usize,
+    behavior: &str,
+    payload: Vec<String>,
+    options: &ClashRulesetOptions,
+    providers: &mut Map<String, Value>,
+) -> Result<String> {
+    let base_name = format!(
+        "{behavior}_{}",
+        ruleset_source_name(&ruleset.source, ruleset_index)
+    );
+    let name = unique_provider_name(&base_name, providers);
+    let interval = options.update_interval.max(1);
+    let provider = if options.optimize_to_http {
+        if ruleset.source.is_empty() {
+            return Err(AppError::Conversion(
+                "clashRSOH requires a source URL for every optimized ruleset".into(),
+            ));
+        }
+        let base_url = options
+            .provider_base_url
+            .as_deref()
+            .ok_or_else(|| AppError::Conversion("clashRSOH requires a provider base URL".into()))?;
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query
+            .append_pair("target", "clash")
+            .append_pair("behavior", behavior)
+            .append_pair("url", &ruleset.source);
+        if let Some(token) = options
+            .access_token
+            .as_deref()
+            .filter(|token| !token.is_empty())
+        {
+            query.append_pair("token", token);
+        }
+        json!({
+            "type": "http",
+            "format": "mrs",
+            "url": format!("{}/ruleset?{}", base_url.trim_end_matches('/'), query.finish()),
+            "behavior": behavior,
+            "interval": interval,
+            "proxy": "DIRECT",
+            "path": format!("./mrs/ruleset/{name}.mrs")
+        })
+    } else {
+        json!({
+            "type": "inline",
+            "format": "text",
+            "behavior": behavior,
+            "payload": payload
+        })
+    };
+    providers.insert(name.clone(), provider);
+    Ok(name)
+}
+
+fn append_geo_provider(
+    rule: &crate::rules::RuleLine,
+    group: &str,
+    options: &ClashRulesetOptions,
+    providers: &mut Map<String, Value>,
+    output: &mut Vec<Value>,
+) -> bool {
+    let kind = rule.kind.to_ascii_lowercase();
+    let Some(transform) = options.geo_transforms.get(&kind) else {
+        return false;
+    };
+    let Some(value) = rule.value.as_deref().filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    if !matches!(kind.as_str(), "geoip" | "geosite") {
+        return false;
+    }
+    let argument = value.to_ascii_lowercase();
+    let base_name = sanitize_provider_name(&format!("{kind}_{argument}"));
+    let name = unique_provider_name(&base_name, providers);
+    let behavior = if transform.behavior.is_empty() {
+        if kind == "geoip" { "ipcidr" } else { "domain" }
+    } else {
+        &transform.behavior
+    };
+    providers.insert(
+        name.clone(),
+        json!({
+            "type": "http",
+            "format": "mrs",
+            "url": transform.url_format.replace("%s", &argument),
+            "behavior": behavior,
+            "interval": options.update_interval.max(1),
+            "proxy": "DIRECT",
+            "path": format!("./mrs/{kind}/{argument}.mrs")
+        }),
+    );
+    output.push(Value::String(format!("RULE-SET,{name},{group}")));
+    true
+}
+
+fn render_rule(rule: &crate::rules::RuleLine, group: &str) -> String {
+    let kind = if rule.kind == "FINAL" {
+        "MATCH"
+    } else {
+        &rule.kind
+    };
+    let mut rendered = kind.to_owned();
+    if let Some(value) = rule.value.as_deref() {
+        rendered.push(',');
+        rendered.push_str(value);
+    }
+    rendered.push(',');
+    rendered.push_str(group);
+    if rule.no_resolve {
+        rendered.push_str(",no-resolve");
+    }
+    rendered
+}
+
+fn ruleset_source_name(source: &str, index: usize) -> String {
+    let without_query = source.split(['?', '#']).next().unwrap_or(source);
+    let file_name = without_query
+        .trim_end_matches('/')
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default();
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if stem.is_empty() {
+        format!("ruleset_{}", index + 1)
+    } else {
+        sanitize_provider_name(stem)
+    }
+}
+
+fn sanitize_provider_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn unique_provider_name(base: &str, providers: &Map<String, Value>) -> String {
+    if !providers.contains_key(base) {
+        return base.to_owned();
+    }
+    (1..)
+        .map(|index| format!("{base}_{index}"))
+        .find(|name| !providers.contains_key(name))
+        .expect("provider suffix space is unbounded")
 }
 
 fn is_clash_rule(rule: &crate::rules::RuleLine) -> bool {
@@ -511,11 +788,126 @@ mod tests {
     fn filters_singbox_only_rules_before_applying_clash_limit() {
         let rulesets = [LoadedRuleset {
             group: "PROXY".into(),
+            source: String::new(),
             content: "IP-VERSION,6\nDOMAIN,kept.example".into(),
             format: crate::external::RulesetFormat::Surge,
         }];
         let output = to_clash_full(&[], None, &[], &rulesets, true, 1, false, false).unwrap();
         let config: Value = serde_yaml::from_str(&output).unwrap();
         assert_eq!(config["rules"], json!(["DOMAIN,kept.example,PROXY"]));
+    }
+
+    fn optimizable_ruleset() -> LoadedRuleset {
+        LoadedRuleset {
+            group: "PROXY".into(),
+            source: "https://rules.example/domain.list".into(),
+            content: (0..8)
+                .map(|index| format!("DOMAIN-SUFFIX,domain{index}.example"))
+                .chain(["IP-CIDR,10.0.0.0/8,no-resolve".into()])
+                .collect::<Vec<_>>()
+                .join("\n"),
+            format: crate::external::RulesetFormat::Surge,
+        }
+    }
+
+    #[test]
+    fn optimizes_large_domains_into_inline_provider() {
+        let output = to_clash_full_with_options(
+            &[],
+            None,
+            &[],
+            &[optimizable_ruleset()],
+            true,
+            0,
+            false,
+            false,
+            &ClashRulesetOptions {
+                optimize: true,
+                update_interval: 432_000,
+                ..ClashRulesetOptions::default()
+            },
+        )
+        .unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        let provider = &config["rule-providers"]["domain_domain"];
+        assert_eq!(provider["type"], "inline");
+        assert_eq!(provider["format"], "text");
+        assert_eq!(provider["payload"].as_array().unwrap().len(), 8);
+        assert_eq!(config["rules"][0], "RULE-SET,domain_domain,PROXY");
+        assert_eq!(config["rules"][1], "IP-CIDR,10.0.0.0/8,PROXY,no-resolve");
+    }
+
+    #[test]
+    fn emits_http_mrs_provider_without_payload() {
+        let output = to_clash_full_with_options(
+            &[],
+            None,
+            &[],
+            &[optimizable_ruleset()],
+            true,
+            0,
+            false,
+            false,
+            &ClashRulesetOptions {
+                optimize: true,
+                optimize_to_http: true,
+                provider_base_url: Some("https://sub.example".into()),
+                access_token: Some("secret".into()),
+                update_interval: 432_000,
+                ..ClashRulesetOptions::default()
+            },
+        )
+        .unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        let provider = &config["rule-providers"]["domain_domain"];
+        assert_eq!(provider["type"], "http");
+        assert_eq!(provider["format"], "mrs");
+        assert!(provider.get("payload").is_none());
+        let url = url::Url::parse(provider["url"].as_str().unwrap()).unwrap();
+        let query: HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(url.origin().ascii_serialization(), "https://sub.example");
+        assert_eq!(query["behavior"], "domain");
+        assert_eq!(query["url"], "https://rules.example/domain.list");
+        assert_eq!(query["token"], "secret");
+    }
+
+    #[test]
+    fn converts_inline_geo_rule_to_remote_mrs_provider() {
+        let ruleset = LoadedRuleset {
+            group: "PROXY".into(),
+            source: String::new(),
+            content: "[]GEOSITE,Google".into(),
+            format: crate::external::RulesetFormat::Surge,
+        };
+        let output = to_clash_full_with_options(
+            &[],
+            None,
+            &[],
+            &[ruleset],
+            true,
+            0,
+            false,
+            false,
+            &ClashRulesetOptions {
+                geo_convert: true,
+                update_interval: 432_000,
+                geo_transforms: HashMap::from([(
+                    "geosite".into(),
+                    RulesetTransform {
+                        name: "geosite".into(),
+                        behavior: "domain".into(),
+                        url_format: "https://rules.example/%s.mrs".into(),
+                    },
+                )]),
+                ..ClashRulesetOptions::default()
+            },
+        )
+        .unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        assert_eq!(config["rules"][0], "RULE-SET,geosite_google,PROXY");
+        assert_eq!(
+            config["rule-providers"]["geosite_google"]["url"],
+            "https://rules.example/google.mrs"
+        );
     }
 }

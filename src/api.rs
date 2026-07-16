@@ -4,7 +4,7 @@ use axum::{
     Router,
     body::Body,
     extract::{Path, Query, RawQuery, State},
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -22,7 +22,9 @@ use tower_http::{
 use crate::{
     config::AppConfig,
     error::{AppError, Result},
-    export::{to_clash, to_clash_full, to_singbox, to_singbox_full},
+    export::{
+        ClashRulesetOptions, to_clash, to_clash_full_with_options, to_singbox, to_singbox_full,
+    },
     external::{self, ExternalConfig, LoadedRuleset},
     fetch::{FetchMetadata, Fetcher},
     model::{Proxy, RuleBehavior},
@@ -84,6 +86,7 @@ async fn health() -> StatusCode {
 async fn private_subscription(
     State(state): State<AppState>,
     Path(path): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Response> {
     let requested = format!("/{}", path.trim_start_matches('/'));
     let target = state
@@ -119,11 +122,15 @@ async fn private_subscription(
         fdn: fields.remove("fdn"),
         udp: fields.remove("udp"),
         tfo: fields.remove("tfo"),
+        clash_rso: fields.remove("clashRSO"),
+        clash_rsoh: fields.remove("clashRSOH"),
+        clash_gvr: fields.remove("clashGVR"),
     };
     subscription_impl(
         State(state),
         RawQuery(Some(raw_query.to_owned())),
         Query(query),
+        headers,
         true,
     )
     .await
@@ -142,20 +149,35 @@ struct SubscriptionQuery {
     fdn: Option<String>,
     udp: Option<String>,
     tfo: Option<String>,
+    #[serde(rename = "clashRSO")]
+    clash_rso: Option<String>,
+    #[serde(rename = "clashRSOH")]
+    clash_rsoh: Option<String>,
+    #[serde(rename = "clashGVR")]
+    clash_gvr: Option<String>,
 }
 
 async fn subscription(
     State(state): State<AppState>,
     RawQuery(raw_query): RawQuery,
     Query(query): Query<SubscriptionQuery>,
+    headers: HeaderMap,
 ) -> Result<Response> {
-    subscription_impl(State(state), RawQuery(raw_query), Query(query), false).await
+    subscription_impl(
+        State(state),
+        RawQuery(raw_query),
+        Query(query),
+        headers,
+        false,
+    )
+    .await
 }
 
 async fn subscription_impl(
     State(state): State<AppState>,
     RawQuery(raw_query): RawQuery,
     Query(query): Query<SubscriptionQuery>,
+    headers: HeaderMap,
     trusted: bool,
 ) -> Result<Response> {
     let authorized = trusted || request_is_authorized(&state.config, query.token.as_deref());
@@ -286,6 +308,28 @@ async fn subscription_impl(
         .is_some_and(|external| external.overwrite_original_rules);
     let mut response = match query.target.to_ascii_lowercase().as_str() {
         "clash" | "clashr" => {
+            let optimize = query_flag(query.clash_rso.as_deref())
+                .unwrap_or(state.config.node_pref.clash_ruleset_optimize);
+            let stash_client = headers
+                .get(header::USER_AGENT)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.contains("Stash/"));
+            let optimize_to_http = query_flag(query.clash_rsoh.as_deref())
+                .unwrap_or(state.config.node_pref.clash_ruleset_optimize_to_http)
+                || stash_client;
+            let geo_convert = query_flag(query.clash_gvr.as_deref())
+                .unwrap_or(state.config.node_pref.clash_geo_convert_ruleset);
+            let ruleset_options = ClashRulesetOptions {
+                optimize,
+                optimize_to_http,
+                geo_convert,
+                provider_base_url: optimize_to_http
+                    .then(|| request_base_url(&headers))
+                    .transpose()?,
+                access_token: query.token.clone(),
+                update_interval: state.config.managed_config.ruleset_update_interval,
+                geo_transforms: state.config.node_pref.clash_rulesets.clone(),
+            };
             let base_source = external
                 .as_ref()
                 .and_then(|external| external.clash_rule_base.as_deref())
@@ -303,7 +347,7 @@ async fn subscription_impl(
             let base = rendered_base(&state, base_source, &request_variables, false).await?;
             text_response(
                 match base.as_deref() {
-                    Some(base) => to_clash_full(
+                    Some(base) => to_clash_full_with_options(
                         &nodes,
                         Some(base),
                         groups,
@@ -312,8 +356,9 @@ async fn subscription_impl(
                         state.config.advance.max_allowed_rules,
                         append_type,
                         sort,
+                        &ruleset_options,
                     )?,
-                    None if external.is_some() => to_clash_full(
+                    None if external.is_some() => to_clash_full_with_options(
                         &nodes,
                         None,
                         groups,
@@ -322,6 +367,7 @@ async fn subscription_impl(
                         state.config.advance.max_allowed_rules,
                         append_type,
                         sort,
+                        &ruleset_options,
                     )?,
                     None => to_clash(&nodes, append_type, sort)?,
                 },
@@ -499,6 +545,50 @@ fn query_flag(value: Option<&str>) -> Option<bool> {
     }
 }
 
+fn request_base_url(headers: &HeaderMap) -> Result<String> {
+    let header_text = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    };
+    let host = header_text("x-forwarded-host")
+        .or_else(|| {
+            headers
+                .get(header::HOST)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .ok_or_else(|| AppError::BadRequest("Host header is required for clashRSOH".into()))?;
+    if host.contains(['/', '\\', '#', '?']) {
+        return Err(AppError::BadRequest(
+            "Host header is invalid for clashRSOH".into(),
+        ));
+    }
+    let force_https = std::env::var("SUB_FORCE_HTTPS")
+        .ok()
+        .as_deref()
+        .and_then(|value| query_flag(Some(value)))
+        .unwrap_or(false);
+    let scheme = if force_https {
+        "https"
+    } else {
+        match header_text("x-forwarded-proto") {
+            Some("https") => "https",
+            Some("http") | None => "http",
+            Some(_) => {
+                return Err(AppError::BadRequest(
+                    "x-forwarded-proto must be http or https".into(),
+                ));
+            }
+        }
+    };
+    Ok(format!("{scheme}://{host}"))
+}
+
 fn is_sensitive_source(source: &str) -> bool {
     source.starts_with("file://") || source.starts_with("env:") || !source.contains("://")
 }
@@ -666,6 +756,7 @@ async fn load_rulesets(
                 };
                 Ok::<_, AppError>(LoadedRuleset {
                     group: spec.group,
+                    source: spec.source.clone(),
                     content,
                     format: spec.format,
                 })
@@ -958,6 +1049,105 @@ value = "sub?target=clash&url={node}&config={external}"
         let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
         assert_eq!(clash["proxies"][0]["name"], "edge");
         assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
+    }
+
+    #[tokio::test]
+    async fn checked_in_stash_rewrite_uses_downloadable_http_mrs_providers() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let config = AppConfig::load(root.join("workdir/pref.example.toml"))
+            .await
+            .unwrap();
+        let app = router(AppState::new(config).unwrap());
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/p/stash/445566")
+                    .header("host", "subscriptions.example")
+                    .header("x-forwarded-proto", "https")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        let providers = clash["rule-providers"].as_mapping().unwrap();
+        assert!(!providers.is_empty());
+        for provider in providers.values() {
+            assert_eq!(provider["type"], "http");
+            assert_eq!(provider["format"], "mrs");
+            assert!(provider.get("payload").is_none());
+        }
+        assert!(
+            clash["rules"]
+                .as_sequence()
+                .unwrap()
+                .iter()
+                .any(|rule| rule.as_str().unwrap_or_default().starts_with("RULE-SET,"))
+        );
+
+        let detected_stash = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/p/clash/445566")
+                    .header("host", "subscriptions.example")
+                    .header("x-forwarded-proto", "https")
+                    .header("user-agent", "Stash/3.0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(detected_stash.status(), StatusCode::OK);
+        let detected_stash = to_bytes(detected_stash.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let detected_stash: serde_yaml::Value = serde_yaml::from_slice(&detected_stash).unwrap();
+        for provider in detected_stash["rule-providers"]
+            .as_mapping()
+            .unwrap()
+            .values()
+        {
+            assert_eq!(provider["type"], "http");
+            assert!(provider.get("payload").is_none());
+        }
+
+        let provider_url = providers
+            .values()
+            .find_map(|provider| provider["url"].as_str())
+            .unwrap();
+        let provider_url = url::Url::parse(provider_url).unwrap();
+        assert_eq!(
+            provider_url.origin().ascii_serialization(),
+            "https://subscriptions.example"
+        );
+        let provider_uri = match provider_url.query() {
+            Some(query) => format!("{}?{query}", provider_url.path()),
+            None => provider_url.path().to_owned(),
+        };
+        let mrs_response = app
+            .oneshot(
+                Request::builder()
+                    .uri(provider_uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mrs_response.status(), StatusCode::OK);
+        assert_eq!(
+            mrs_response.headers()[header::CONTENT_TYPE],
+            "application/octet-stream"
+        );
+        assert!(
+            !to_bytes(mrs_response.into_body(), 1024 * 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
