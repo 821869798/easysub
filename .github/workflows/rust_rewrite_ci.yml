@@ -1,0 +1,93 @@
+name: Rust rewrite CI
+
+on:
+  push:
+    branches:
+      - feat/rust-rewrite
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - "src/**"
+      - "tests/**"
+      - "benches/**"
+      - "workdir/**"
+      - ".github/workflows/rust_rewrite_ci.yml"
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - "src/**"
+      - "tests/**"
+      - "benches/**"
+      - "workdir/**"
+      - ".github/workflows/rust_rewrite_ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  correctness:
+    name: Correctness and compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install project Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Rust tests, golden corpus, and properties
+        run: cargo test --all-targets
+
+      - name: Run Go compatibility regression
+        run: |
+          go test ./...
+          go vet ./...
+
+  performance:
+    name: Release performance and size
+    runs-on: ubuntu-latest
+    env:
+      EASYSUB_BENCH_MAX_PARSE_1000_NODES_MS: "50"
+      EASYSUB_BENCH_MAX_CLASH_EXPORT_1000_NODES_MS: "100"
+      EASYSUB_BENCH_MAX_SINGBOX_EXPORT_1000_NODES_MS: "50"
+      EASYSUB_BENCH_MAX_MRS_10000_DOMAINS_MS: "100"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install project Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run core performance gates
+        run: cargo bench --bench core
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Enforce 12 MiB Linux binary limit
+        shell: bash
+        run: |
+          bytes=$(stat -c%s target/release/easysub-rs)
+          limit=$((12 * 1024 * 1024))
+          echo "release bytes: $bytes"
+          test "$bytes" -le "$limit"

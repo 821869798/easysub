@@ -3,7 +3,7 @@ name = "easysub-rs"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.96"
 
 [dependencies]
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
@@ -24,7 +24,7 @@ serde_yaml = "0.9"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "1.1.3"
-tower-http = { version = "0.6", features = ["catch-panic", "request-id", "timeout", "trace"] }
+tower-http = { version = "0.7", features = ["catch-panic", "request-id", "timeout", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2"

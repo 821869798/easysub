@@ -108,11 +108,23 @@ The rewrite is currently a usable development implementation, not yet a complete
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
-| TEST-05 | [x] | Core and real-service performance harnesses | 1k parse 1.392 ms; Clash 3.774 ms; sing-box 1.647 ms; 10k MRS 3.671 ms; 16 full-ACL requests 0.699 s |
-| TEST-06 | [x] | Release binary-size baseline | 7.68 MiB on Windows x86-64 after current features |
-| TEST-07 | [ ] | CI gates | fmt, clippy, tests, golden, fuzz smoke, release size |
+| TEST-05 | [x] | Core and real-service performance harnesses | Latest deps: 1k parse 1.410 ms; Clash 3.973 ms; sing-box 1.671 ms; 10k MRS 3.755 ms; 16 full-ACL requests 0.697 s |
+| TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
+| TEST-07 | [-] | CI gates | Rust 1.96 fmt/clippy/tests/Go regression/performance/size workflow added; awaiting first remote run |
 | DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |
 | CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
+
+## Toolchain and dependencies
+
+| ID | Status | Item | Evidence |
+|---|---|---|---|
+| DEP-01 | [x] | Rust version floor | Rust 1.96.0; no older toolchain compatibility target |
+| DEP-02 | [x] | Direct crates at latest stable versions | crates.io API audit on 2026-07-16; tower-http upgraded to 0.7.0 |
+| DEP-03 | [x] | Transitive lockfile update | `cargo update` selected the newest versions allowed by direct dependencies |
+| DEP-04 | [-] | YAML implementation | `serde_yaml 0.9.34+deprecated` is still crates.io latest; replacement needs a separate compatibility decision |
+
+Axum 0.8.9 pins `matchit = 0.8.4` exactly, so Cargo correctly rejects the
+newer matchit 0.8.6 until Axum itself updates that constraint.
 
 ## Work order
 

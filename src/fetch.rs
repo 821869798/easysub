@@ -78,13 +78,13 @@ impl Fetcher {
         if ttl == Duration::ZERO {
             return self.download(url).await;
         }
-        if ttl > Duration::ZERO {
-            if let Some(value) = self.cache.get(url).await {
-                if value.expires_at > Instant::now() {
-                    return Ok(value.body.clone());
-                }
-                self.cache.invalidate(url).await;
+        if ttl > Duration::ZERO
+            && let Some(value) = self.cache.get(url).await
+        {
+            if value.expires_at > Instant::now() {
+                return Ok(value.body.clone());
             }
+            self.cache.invalidate(url).await;
         }
         let key = url.to_owned();
         let download_url = key.clone();

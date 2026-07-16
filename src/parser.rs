@@ -224,15 +224,14 @@ fn parse_vmess_json(value: &Value) -> Result<Proxy> {
     proxy.network = non_empty(get("net"), "tcp");
     proxy.host = get("host");
     proxy.path = get("path");
-    if matches!(get("v").as_str(), "" | "1") {
-        if let Some((host, path)) = proxy
+    if matches!(get("v").as_str(), "" | "1")
+        && let Some((host, path)) = proxy
             .host
             .split_once(';')
             .map(|(host, path)| (host.to_owned(), path.to_owned()))
-        {
-            proxy.host = host;
-            proxy.path = path;
-        }
+    {
+        proxy.host = host;
+        proxy.path = path;
     }
     proxy.tls = !matches!(get("tls").as_str(), "" | "none");
     proxy.server_name = get("sni");
@@ -377,10 +376,10 @@ fn parse_vmess_quan(decoded: &str) -> Result<Proxy> {
             "obfs" if value.eq_ignore_ascii_case("ws") => proxy.network = "ws".into(),
             "obfs-header" => {
                 for header in value.split(['|', '\r', '\n']) {
-                    if let Some((name, value)) = header.split_once(':') {
-                        if name.trim().eq_ignore_ascii_case("host") {
-                            proxy.host = value.trim().to_owned();
-                        }
+                    if let Some((name, value)) = header.split_once(':')
+                        && name.trim().eq_ignore_ascii_case("host")
+                    {
+                        proxy.host = value.trim().to_owned();
                     }
                 }
             }
