@@ -35,9 +35,24 @@ Defaults are conservative but can be raised without recompiling.
 5. Private subscriptions, full golden corpus, fuzzing, and performance gates.
 6. Remove the Go build only after parity is documented and verified.
 
+## Current implementation status
+
+Completed on `feat/rust-rewrite`:
+
+- Axum/Tokio service, bounded fetch/cache, tracing, and graceful shutdown;
+- core subscription parsers and deterministic Clash/sing-box exporters;
+- independent MRS v1 Domain/IPCIDR generation with Mihomo-compatible fixtures;
+- external INI configs, ordered custom groups, and inline/remote rulesets;
+- private subscription variables and `/p/*path` internal rewrites.
+
+Still required before replacing the Go service:
+
+- remaining protocol and ruleset transformation edge cases;
+- Go/Rust golden-output corpus and malformed-input fuzzing;
+- reproducible latency, throughput, peak-memory, and binary-size gates.
+
 ## Compatibility policy
 
 Bug fixes covered by Go commit `9d8c581` are treated as required behavior:
 rule limits are exact, invalid/skipped proxies do not reserve names, mixed
 ruleset formats are not merged, and group matching preserves input order.
-

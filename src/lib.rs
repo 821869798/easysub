@@ -8,5 +8,6 @@ pub mod group;
 pub mod model;
 pub mod mrs;
 pub mod parser;
+pub mod private;
 pub mod rules;
 pub mod template;

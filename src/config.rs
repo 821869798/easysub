@@ -8,7 +8,10 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::error::{AppError, Result};
+use crate::{
+    error::{AppError, Result},
+    private::PrivateSubscriptions,
+};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -20,6 +23,8 @@ pub struct AppConfig {
     pub advance: AdvancedConfig,
     #[serde(skip)]
     pub base_dir: PathBuf,
+    #[serde(skip)]
+    pub private_subscriptions: Option<PrivateSubscriptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -122,6 +127,8 @@ pub struct AdvancedConfig {
     pub request_timeout_seconds: u64,
     pub enable_file_share: bool,
     pub file_share_path: String,
+    pub enable_private_sub: bool,
+    pub private_sub_config: String,
 }
 
 impl Default for AdvancedConfig {
@@ -143,6 +150,8 @@ impl Default for AdvancedConfig {
             request_timeout_seconds: 30,
             enable_file_share: true,
             file_share_path: "./file_share".into(),
+            enable_private_sub: false,
+            private_sub_config: String::new(),
         }
     }
 }
@@ -161,6 +170,10 @@ impl AppConfig {
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
         config.normalize();
+        if config.advance.enable_private_sub && !config.advance.private_sub_config.is_empty() {
+            let source = config.resolve_source(&config.advance.private_sub_config);
+            config.private_subscriptions = Some(PrivateSubscriptions::load(&source).await?);
+        }
         Ok(Arc::new(config))
     }
 

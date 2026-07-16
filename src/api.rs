@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use axum::{
     Router,
     body::Body,
-    extract::{Query, RawQuery, State},
+    extract::{Path, Query, RawQuery, State},
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
@@ -52,12 +52,17 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     let timeout = state.config.request_timeout() + Duration::from_secs(5);
     let request_id = header::HeaderName::from_static("x-request-id");
-    Router::new()
+    let app = Router::new()
         .route("/", get(root))
         .route("/healthz", get(health))
         .route("/sub", get(subscription))
-        .route("/ruleset", get(ruleset))
-        .with_state(state)
+        .route("/ruleset", get(ruleset));
+    let app = if state.config.private_subscriptions.is_some() {
+        app.route("/p/{*path}", get(private_subscription))
+    } else {
+        app
+    };
+    app.with_state(state)
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
         .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
         .layer(TimeoutLayer::with_status_code(
@@ -74,6 +79,53 @@ async fn root() -> &'static str {
 
 async fn health() -> StatusCode {
     StatusCode::NO_CONTENT
+}
+
+async fn private_subscription(
+    State(state): State<AppState>,
+    Path(path): Path<String>,
+) -> Result<Response> {
+    let requested = format!("/{}", path.trim_start_matches('/'));
+    let target = state
+        .config
+        .private_subscriptions
+        .as_ref()
+        .and_then(|private| private.route(&requested))
+        .ok_or_else(|| AppError::NotFound(requested.clone()))?
+        .to_owned();
+    let (path, raw_query) = target
+        .split_once('?')
+        .ok_or_else(|| AppError::BadRequest("private rewrite has no query string".into()))?;
+    if !path.trim_matches('/').eq_ignore_ascii_case("sub") {
+        return Err(AppError::BadRequest(format!(
+            "private rewrite target is unsupported: {path}"
+        )));
+    }
+    let mut fields: std::collections::HashMap<String, String> =
+        url::form_urlencoded::parse(raw_query.as_bytes())
+            .into_owned()
+            .collect();
+    let query = SubscriptionQuery {
+        target: fields
+            .remove("target")
+            .ok_or_else(|| AppError::BadRequest("private rewrite has no target".into()))?,
+        url: fields.remove("url"),
+        config: fields.remove("config"),
+        append_type: take_bool(&mut fields, "append_type"),
+        sort: take_bool(&mut fields, "sort"),
+    };
+    subscription(
+        State(state),
+        RawQuery(Some(raw_query.to_owned())),
+        Query(query),
+    )
+    .await
+}
+
+fn take_bool(fields: &mut std::collections::HashMap<String, String>, key: &str) -> bool {
+    fields
+        .remove(key)
+        .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -557,5 +609,42 @@ mod tests {
         assert!(selector.get("url").is_none());
         assert!(selector.get("interval").is_none());
         assert_eq!(singbox["route"]["final"], "🚀 节点选择");
+    }
+
+    #[tokio::test]
+    async fn serves_private_subscription_by_internal_rewrite() {
+        let mut config = fixture_config();
+        config.private_subscriptions = Some(
+            crate::private::PrivateSubscriptions::parse(
+                r#"
+[[vars]]
+key = "node"
+value = "trojan://secret@example.com:443?sni=edge.example.com#edge"
+
+[[vars]]
+key = "external"
+value = "file:///ACL4SSR_NoRule.ini"
+
+[[rewrites]]
+key = "/clash/token"
+value = "sub?target=clash&url={node}&config={external}"
+"#,
+            )
+            .unwrap(),
+        );
+        let response = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/p/clash/token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"][0]["name"], "edge");
+        assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
     }
 }

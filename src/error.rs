@@ -14,6 +14,8 @@ pub enum AppError {
     Config(String),
     #[error("invalid request: {0}")]
     BadRequest(String),
+    #[error("not found: {0}")]
+    NotFound(String),
     #[error("unsupported input: {0}")]
     Unsupported(String),
     #[error("upstream error: {0}")]
@@ -30,6 +32,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match self {
             Self::BadRequest(_) | Self::Unsupported(_) => StatusCode::BAD_REQUEST,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Limit(_) => StatusCode::PAYLOAD_TOO_LARGE,
             Self::Upstream(_) => StatusCode::BAD_GATEWAY,
             Self::Config(_) | Self::Conversion(_) | Self::Internal(_) => {
