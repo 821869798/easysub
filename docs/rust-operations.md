@@ -33,6 +33,21 @@ Invoke-WebRequest http://127.0.0.1:25500/healthz
 `/healthz` 应返回 `204`。业务端点为 `/sub`、`/ruleset`，启用私有订阅后还有
 `/p/*path`。
 
+容器构建和启动：
+
+```powershell
+docker build -t easysub-rs .
+docker run --rm -p 25500:25500 easysub-rs
+```
+
+镜像使用 Rust 1.96.0 构建，并以非 root 用户运行。自定义配置可以只读挂载：
+
+```powershell
+docker run --rm -p 25500:25500 `
+  -v "${PWD}/workdir/pref.toml:/app/workdir/pref.toml:ro" `
+  easysub-rs
+```
+
 ## Rust 资源控制项
 
 Rust 版本不沿用 Go 的全局并发 3 限制。普通请求由 Tokio 调度，同时通过以下

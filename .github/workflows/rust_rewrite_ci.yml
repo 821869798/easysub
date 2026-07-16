@@ -11,6 +11,8 @@ on:
       - "tests/**"
       - "benches/**"
       - "workdir/**"
+      - Dockerfile
+      - .dockerignore
       - ".github/workflows/rust_rewrite_ci.yml"
   pull_request:
     paths:
@@ -20,6 +22,8 @@ on:
       - "tests/**"
       - "benches/**"
       - "workdir/**"
+      - Dockerfile
+      - .dockerignore
       - ".github/workflows/rust_rewrite_ci.yml"
   workflow_dispatch:
 
@@ -92,3 +96,35 @@ jobs:
           limit=$((12 * 1024 * 1024))
           echo "release bytes: $bytes"
           test "$bytes" -le "$limit"
+
+  container:
+    name: Container build and health
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local CI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: easysub-rs:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify container health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name easysub-rs-ci --publish 25500:25500 easysub-rs:ci
+          trap 'docker logs easysub-rs-ci; docker rm --force easysub-rs-ci' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:25500/healthz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1

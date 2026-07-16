@@ -28,8 +28,12 @@ cargo run --release -- workdir/pref.example.toml
 - 调用api,例如 http://127.0.0.1:25500/sub?target=clash&url={替换为自己的节点用|分割多个}&config={替换为自己需要的配置}
 
 ### Docker部署
-- 编写自己的Dockerfile,可以参考[docker_example目录](docs/docker_example)
-- 使用Docker构建该文件，或者放到github私有仓库中，使用容器服务商构建，例如[railway](https://railway.com)和[render](https://render.com)
+- 根目录 [Dockerfile](Dockerfile) 使用 Rust 1.96.0 多阶段构建：
+  `docker build -t easysub-rs .`
+- 启动示例：`docker run --rm -p 25500:25500 easysub-rs`
+- 自定义配置可挂载到 `/app/workdir/pref.toml`。也可参考
+  [docker_example目录](docs/docker_example)，或交给 [railway](https://railway.com)、
+  [render](https://render.com) 等容器平台构建。
 
 ## ✨ 功能特点
 

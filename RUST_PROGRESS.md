@@ -112,6 +112,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
 | TEST-07 | [-] | CI gates | Rust 1.96 fmt/clippy/tests/Go regression/performance/size workflow added; awaiting first remote run |
 | DOC-01 | [x] | Rust deployment/operations README | Build/config precedence, resource limits, logging, SIGINT/SIGTERM shutdown, canary and rollback runbook |
+| CONT-01 | [-] | Rust multi-stage container image | Rust 1.96 builder, non-root Alpine runtime and healthcheck added; awaiting remote Docker CI because Docker is unavailable locally |
 | CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
 
 ## Toolchain and dependencies
