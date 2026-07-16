@@ -70,13 +70,13 @@ The rewrite is currently a usable development implementation, not yet a complete
 | ID | Status | Item | Notes |
 |---|---|---|---|
 | EXP-01 | [x] | Deterministic node names and ordering | Duplicate-name tests |
-| EXP-02 | [x] | Clash node output | Modern URI protocols plus structured Snell/WireGuard fields tested |
+| EXP-02 | [x] | Clash node output | Modern URI protocols plus structured Snell/WireGuard fields tested; Trojan uses Mihomo `sni`, and proxy/group YAML collection styles match the Go configuration |
 | EXP-03 | [x] | sing-box node output | Modern URI protocols and WireGuard endpoints tested; Snell intentionally skipped as unsupported |
 | EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and OR-preserving field buckets |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
-| EXP-08 | [x] | Clash rule-provider optimization | `clashRSO`, `clashRSOH` and `clashGVR` support inline providers, HTTP MRS providers and GEOIP/GEOSITE conversion; Stash rewrites explicitly enable `clashRSOH` |
+| EXP-08 | [x] | Clash rule-provider optimization | `clashRSO`, `clashRSOH` and `clashGVR` support inline providers, HTTP MRS providers and GEOIP/GEOSITE conversion; adjacent same-group sources merge like Go; Stash rewrites explicitly enable `clashRSOH` |
 
 ## External configuration and rulesets
 
@@ -105,7 +105,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 61 tests including full external INI fixtures, rule-provider modes, metadata caching, large mixed rulesets, Netch and legacy golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 64 tests (61 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, metadata caching and Netch |
 | TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
 | TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

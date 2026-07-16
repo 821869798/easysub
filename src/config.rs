@@ -61,10 +61,12 @@ impl Default for CommonConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct NodePreferences {
     pub sort_flag: bool,
+    pub clash_proxies_style: String,
+    pub clash_proxy_groups_style: String,
     pub append_proxy_type: bool,
     pub filter_deprecated_nodes: bool,
     pub append_sub_userinfo: bool,
@@ -78,6 +80,28 @@ pub struct NodePreferences {
     pub singbox_add_clash_modes: bool,
     pub clash_rulesets: HashMap<String, RulesetTransform>,
     pub singbox_rulesets: HashMap<String, RulesetTransform>,
+}
+
+impl Default for NodePreferences {
+    fn default() -> Self {
+        Self {
+            sort_flag: false,
+            clash_proxies_style: "flow".into(),
+            clash_proxy_groups_style: "block".into(),
+            append_proxy_type: false,
+            filter_deprecated_nodes: false,
+            append_sub_userinfo: false,
+            udp_flag: None,
+            tcp_fast_open_flag: None,
+            skip_cert_verify_flag: None,
+            clash_ruleset_optimize: false,
+            clash_ruleset_optimize_to_http: false,
+            clash_geo_convert_ruleset: false,
+            singbox_add_clash_modes: false,
+            clash_rulesets: HashMap::new(),
+            singbox_rulesets: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

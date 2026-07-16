@@ -315,6 +315,8 @@ async fn subscription_impl(
             let geo_convert = query_flag(query.clash_gvr.as_deref())
                 .unwrap_or(state.config.node_pref.clash_geo_convert_ruleset);
             let ruleset_options = ClashRulesetOptions {
+                proxies_style: state.config.node_pref.clash_proxies_style.clone(),
+                proxy_groups_style: state.config.node_pref.clash_proxy_groups_style.clone(),
                 optimize,
                 optimize_to_http,
                 geo_convert,
@@ -751,7 +753,11 @@ async fn load_rulesets(
                 };
                 Ok::<_, AppError>(LoadedRuleset {
                     group: spec.group,
-                    source: spec.source.clone(),
+                    source: if spec.inline {
+                        String::new()
+                    } else {
+                        spec.source.clone()
+                    },
                     content,
                     format: spec.format,
                 })
