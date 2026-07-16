@@ -111,7 +111,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.653 ms; Clash 3.817 ms; sing-box 1.819 ms; 10k MRS 3.784 ms; 10k mixed rules 3.287 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
 | TEST-07 | [-] | CI gates | Rust 1.96 fmt/clippy/tests/Go regression/performance/size workflow added; awaiting first remote run |
-| DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |
+| DOC-01 | [x] | Rust deployment/operations README | Build/config precedence, resource limits, logging, SIGINT/SIGTERM shutdown, canary and rollback runbook |
 | CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
 
 ## Toolchain and dependencies

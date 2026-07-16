@@ -16,7 +16,8 @@ cargo run --release -- workdir/pref.example.toml
 ```
 
 默认提供 `/healthz`、`/sub` 和 `/ruleset`。迁移期间 Go 实现仍保留为输出
-兼容性基准。
+兼容性基准。部署、资源限制、日志、优雅停机及升级回滚见
+[Rust 版本部署与运维](docs/rust-operations.md)。
 
 ## 🚀 快速开始
 ### 本地部署
