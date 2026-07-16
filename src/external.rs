@@ -262,4 +262,65 @@ mod tests {
         assert!(config.groups[0].selectors.is_empty());
         assert_eq!(config.groups[1].kind, GroupKind::Ssid);
     }
+
+    #[test]
+    fn parses_every_go_supported_group_shape() {
+        let config = parse(
+            r#"[custom]
+custom_proxy_group=SELECT`select`[]DIRECT`.*
+custom_proxy_group=RELAY`relay`!!TYPE=VMESS`!!SERVER=edge
+custom_proxy_group=AUTO`url-test`!!PROVIDER=airport-a,airport-b`.*`https://probe.example/generate_204`300,5,50
+custom_proxy_group=FALLBACK`fallback`.*`https://probe.example/fallback`600,10,0
+custom_proxy_group=BALANCE`load-balance`!!PORT=443`https://probe.example/balance`900,15,25
+custom_proxy_group=WIFI`ssid`[]DIRECT
+ruleset=SELECT,[]FINAL"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config
+                .groups
+                .iter()
+                .map(|group| group.kind)
+                .collect::<Vec<_>>(),
+            [
+                GroupKind::Select,
+                GroupKind::Relay,
+                GroupKind::UrlTest,
+                GroupKind::Fallback,
+                GroupKind::LoadBalance,
+                GroupKind::Ssid,
+            ]
+        );
+        let auto = &config.groups[2];
+        assert_eq!(auto.providers, ["airport-a", "airport-b"]);
+        assert_eq!(auto.selectors, [".*"]);
+        assert_eq!(auto.url, "https://probe.example/generate_204");
+        assert_eq!(auto.interval, 300);
+        assert_eq!(auto.tolerance, 50);
+        assert_eq!(config.groups[4].interval, 900);
+        assert_eq!(config.groups[4].tolerance, 25);
+    }
+
+    #[test]
+    fn parses_all_checked_in_external_config_fixtures() {
+        let fixtures = [
+            include_str!("../workdir/file_share/ACL4SSR_NoRule.ini"),
+            include_str!("../workdir/file_share/ACL4SSR_Online_NoAuto.ini"),
+            include_str!("../docs/docker_example/workdir/file_share/ACL4SSR_NoRule.ini"),
+            include_str!("../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto.ini"),
+            include_str!(
+                "../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto_AdblockPlus.ini"
+            ),
+        ];
+        for (index, fixture) in fixtures.into_iter().enumerate() {
+            let config = parse(fixture)
+                .unwrap_or_else(|error| panic!("external fixture {index} failed: {error}"));
+            assert!(!config.groups.is_empty(), "fixture {index} has no groups");
+            assert!(
+                !config.rulesets.is_empty(),
+                "fixture {index} has no rulesets"
+            );
+        }
+    }
 }

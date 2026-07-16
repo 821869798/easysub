@@ -87,7 +87,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | RULE-03 | [x] | Surge, QuanX, Clash domain/IPCIDR/classical inputs | Basic conversion implemented |
 | RULE-04 | [x] | Inline rules including `[]FINAL` | Clash MATCH and sing-box final tests |
 | RULE-05 | [x] | Configured skip-on-fetch-failure behavior | Subscription/ruleset tests cover skip and strict modes |
-| RULE-06 | [ ] | Full uncommon INI/group/provider syntax | Fixture-driven implementation |
+| RULE-06 | [x] | Full uncommon INI/group/provider syntax | All Go-supported group kinds, provider selectors, timing fields and every checked-in deployment INI are fixture-tested |
 | RULE-07 | [x] | MRS v1 Domain/IPCIDR encoder | Decompressed bytes match Mihomo fixtures |
 | RULE-08 | [x] | Large/mixed ruleset golden and memory corpus | 25k mixed-rule corpus verifies deterministic Clash/sing-box output, exact 4,096-rule limit and bounded serialized output |
 
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 55 tests including extended typed rules, response metadata caching, large mixed rulesets, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 57 tests including full external INI fixtures, extended typed rules, metadata caching, large mixed rulesets, Netch and Go/Rust golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [x] | Go/Rust golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
