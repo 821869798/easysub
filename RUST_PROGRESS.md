@@ -17,7 +17,7 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 
 - [-] Feature parity: all production inputs and routes used by the current deployment work.
 - [-] Correctness: Rust output has a maintained Go/Rust golden corpus.
-- [-] Reliability: malformed inputs are fuzzed and upstream failures follow configured policy.
+- [x] Reliability: bounded property fuzz smoke and configured upstream-failure policy are tested.
 - [-] Performance: release throughput, latency, peak memory, and binary size have repeatable gates.
 - [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
 
@@ -104,10 +104,10 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 33 tests including the first Go semantic golden case |
+| TEST-01 | [x] | Rust unit/integration suite | 36 tests including golden and property suites |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
-| TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |
+| TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
 | TEST-05 | [-] | Performance baseline | Full ACL: 0.525 s cold; 16 requests: 0.484 s wall on current machine |
 | TEST-06 | [x] | Release binary-size baseline | 7.63 MiB on Windows x86-64 |
 | TEST-07 | [ ] | CI gates | fmt, clippy, tests, golden, fuzz smoke, release size |

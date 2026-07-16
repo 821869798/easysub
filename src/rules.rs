@@ -217,7 +217,35 @@ fn valid_domain(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        #[test]
+        fn malformed_rulesets_never_panic(
+            bytes in proptest::collection::vec(any::<u8>(), 0..4096)
+        ) {
+            let input = String::from_utf8_lossy(&bytes);
+            for format in [
+                RulesetFormat::Surge,
+                RulesetFormat::QuanX,
+                RulesetFormat::ClashDomain,
+                RulesetFormat::ClashIpCidr,
+                RulesetFormat::ClashClassical,
+            ] {
+                let rules = parse_common_rules(&input, format, 128);
+                prop_assert!(rules.len() <= 128);
+            }
+            for behavior in [RuleBehavior::Domain, RuleBehavior::IpCidr] {
+                if let Ok(rules) = normalize_rules(&input, behavior, 128) {
+                    prop_assert!(rules.len() <= 128);
+                }
+            }
+        }
+    }
 
     #[test]
     fn normalizes_domain_rules() {

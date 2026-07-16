@@ -572,7 +572,22 @@ fn non_empty_name(fragment: &str, server: &str, port: u16) -> String {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        #[test]
+        fn malformed_proxy_and_subscription_inputs_never_panic(
+            bytes in proptest::collection::vec(any::<u8>(), 0..4096)
+        ) {
+            let input = String::from_utf8_lossy(&bytes);
+            let _ = parse_node(&input, 0);
+            let _ = parse_subscription(&input, 0);
+        }
+    }
 
     #[test]
     fn parses_vmess_fixture() {

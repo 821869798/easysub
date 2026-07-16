@@ -204,7 +204,21 @@ fn parse_group(value: &str) -> Option<ProxyGroup> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        #[test]
+        fn malformed_external_configs_never_panic(
+            bytes in proptest::collection::vec(any::<u8>(), 0..4096)
+        ) {
+            let input = String::from_utf8_lossy(&bytes);
+            let _ = parse(&input);
+        }
+    }
 
     #[test]
     fn parses_shadowed_ini_keys_in_order() {
