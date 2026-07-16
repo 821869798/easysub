@@ -67,6 +67,7 @@ pub struct NodePreferences {
     pub sort_flag: bool,
     pub append_proxy_type: bool,
     pub filter_deprecated_nodes: bool,
+    pub append_sub_userinfo: bool,
     pub udp_flag: Option<bool>,
     pub tcp_fast_open_flag: Option<bool>,
     #[serde(alias = "skip_cert_verify")]

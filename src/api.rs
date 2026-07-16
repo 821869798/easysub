@@ -24,7 +24,7 @@ use crate::{
     error::{AppError, Result},
     export::{to_clash, to_clash_full, to_singbox, to_singbox_full},
     external::{self, ExternalConfig, LoadedRuleset},
-    fetch::Fetcher,
+    fetch::{FetchMetadata, Fetcher},
     model::{Proxy, RuleBehavior},
     mrs,
     parser::{looks_like_proxy, parse_node, parse_subscription},
@@ -187,35 +187,40 @@ async fn subscription_impl(
     let ttl = Duration::from_secs(state.config.advance.cache_subscription);
 
     let skip_failed = state.config.advance.skip_failed_links;
-    let mut loaded: Vec<(usize, Vec<Proxy>)> = stream::iter(sources.into_iter().enumerate())
-        .map(|(index, source)| {
-            let state = state.clone();
-            async move {
-                let result = async {
-                    if looks_like_proxy(&source) {
-                        return parse_node(&source, index as u32).map(|node| vec![node]);
+    let mut loaded: Vec<(usize, Vec<Proxy>, FetchMetadata)> =
+        stream::iter(sources.into_iter().enumerate())
+            .map(|(index, source)| {
+                let state = state.clone();
+                async move {
+                    let result = async {
+                        if looks_like_proxy(&source) {
+                            return parse_node(&source, index as u32)
+                                .map(|node| (vec![node], FetchMetadata::default()));
+                        }
+                        let fetched = state.fetcher.get_with_metadata(&source, ttl, false).await?;
+                        let text = std::str::from_utf8(&fetched.body).map_err(|_| {
+                            AppError::BadRequest("subscription is not UTF-8".into())
+                        })?;
+                        parse_subscription(text, index as u32)
+                            .map(|nodes| (nodes, fetched.metadata))
                     }
-                    let bytes = state.fetcher.get(&source, ttl, false).await?;
-                    let text = std::str::from_utf8(&bytes)
-                        .map_err(|_| AppError::BadRequest("subscription is not UTF-8".into()))?;
-                    parse_subscription(text, index as u32)
-                }
-                .await;
-                match result {
-                    Ok(nodes) => Ok((index, nodes)),
-                    Err(error) if skip_failed => {
-                        tracing::warn!(%error, %source, "skipping failed subscription source");
-                        Ok((index, Vec::new()))
+                    .await;
+                    match result {
+                        Ok((nodes, metadata)) => Ok((index, nodes, metadata)),
+                        Err(error) if skip_failed => {
+                            tracing::warn!(%error, %source, "skipping failed subscription source");
+                            Ok((index, Vec::new(), FetchMetadata::default()))
+                        }
+                        Err(error) => Err(error),
                     }
-                    Err(error) => Err(error),
                 }
-            }
-        })
-        .buffer_unordered(concurrency)
-        .try_collect()
-        .await?;
-    loaded.sort_by_key(|(index, _)| *index);
-    let mut nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes)| nodes).collect();
+            })
+            .buffer_unordered(concurrency)
+            .try_collect()
+            .await?;
+    loaded.sort_by_key(|(index, _, _)| *index);
+    let metadata = merge_fetch_metadata(&loaded);
+    let mut nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes, _)| nodes).collect();
     if nodes.is_empty() {
         return Err(AppError::BadRequest(
             "all subscription sources failed or contained no supported nodes".into(),
@@ -279,7 +284,7 @@ async fn subscription_impl(
     let overwrite_rules = external
         .as_ref()
         .is_some_and(|external| external.overwrite_original_rules);
-    match query.target.to_ascii_lowercase().as_str() {
+    let mut response = match query.target.to_ascii_lowercase().as_str() {
         "clash" | "clashr" => {
             let base_source = external
                 .as_ref()
@@ -373,7 +378,11 @@ async fn subscription_impl(
         target => Err(AppError::BadRequest(format!(
             "unsupported target: {target}"
         ))),
+    }?;
+    if state.config.node_pref.append_sub_userinfo {
+        apply_fetch_metadata(&mut response, &metadata);
     }
+    Ok(response)
 }
 
 #[derive(Debug, Deserialize)]
@@ -515,6 +524,44 @@ fn enforce_source_limit(sources: &[String], config: &AppConfig) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+fn merge_fetch_metadata(loaded: &[(usize, Vec<Proxy>, FetchMetadata)]) -> FetchMetadata {
+    let first = |select: fn(&FetchMetadata) -> &Option<String>| {
+        loaded
+            .iter()
+            .filter_map(|(_, _, metadata)| select(metadata).as_deref())
+            .find(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    };
+    FetchMetadata {
+        subscription_userinfo: first(|metadata| &metadata.subscription_userinfo),
+        profile_web_page_url: first(|metadata| &metadata.profile_web_page_url),
+        profile_update_interval: first(|metadata| &metadata.profile_update_interval),
+    }
+}
+
+fn apply_fetch_metadata(response: &mut Response, metadata: &FetchMetadata) {
+    let headers = [
+        ("subscription-userinfo", &metadata.subscription_userinfo),
+        ("profile-web-page-url", &metadata.profile_web_page_url),
+        ("profile-update-interval", &metadata.profile_update_interval),
+    ];
+    for (name, value) in headers {
+        let Some(value) = value else {
+            continue;
+        };
+        match HeaderValue::from_str(value) {
+            Ok(value) => {
+                response
+                    .headers_mut()
+                    .insert(header::HeaderName::from_static(name), value);
+            }
+            Err(error) => {
+                tracing::warn!(%error, header = name, "ignoring invalid upstream response header");
+            }
+        }
+    }
 }
 
 async fn rendered_base(
@@ -664,10 +711,14 @@ fn text_response(body: String, content_type: &'static str) -> Result<Response> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        path::PathBuf,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
-    use axum::{body::to_bytes, http::Request};
+    use axum::{body::to_bytes, http::Request, routing::get};
     use serde_json::Value;
+    use tokio::net::TcpListener;
     use tower::ServiceExt;
 
     use super::*;
@@ -708,6 +759,99 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn preserves_upstream_subscription_metadata_in_cached_responses() {
+        let upstream_hits = Arc::new(AtomicUsize::new(0));
+        let upstream = Router::new().route(
+            "/subscription",
+            get({
+                let upstream_hits = upstream_hits.clone();
+                move || async move {
+                    upstream_hits.fetch_add(1, Ordering::Relaxed);
+                    (
+                        [
+                            (
+                                "subscription-userinfo",
+                                "upload=1; download=2; total=3; expire=4",
+                            ),
+                            ("profile-web-page-url", "https://portal.example.com/profile"),
+                            ("profile-update-interval", "24"),
+                        ],
+                        "trojan://secret@example.com:443#edge",
+                    )
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+
+        let mut config = fixture_config();
+        config.node_pref.append_sub_userinfo = true;
+        config.advance.cache_subscription = 60;
+        let app = router(AppState::new(Arc::new(config)).unwrap());
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair("url", &format!("http://{address}/subscription"))
+            .finish();
+
+        for _ in 0..2 {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/sub?{query}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()["subscription-userinfo"],
+                "upload=1; download=2; total=3; expire=4"
+            );
+            assert_eq!(
+                response.headers()["profile-web-page-url"],
+                "https://portal.example.com/profile"
+            );
+            assert_eq!(response.headers()["profile-update-interval"], "24");
+        }
+        assert_eq!(upstream_hits.load(Ordering::Relaxed), 1);
+
+        server.abort();
+    }
+
+    #[test]
+    fn merges_each_metadata_field_in_source_order() {
+        let loaded = vec![
+            (
+                0,
+                Vec::new(),
+                FetchMetadata {
+                    subscription_userinfo: Some("upload=1".into()),
+                    ..FetchMetadata::default()
+                },
+            ),
+            (
+                1,
+                Vec::new(),
+                FetchMetadata {
+                    subscription_userinfo: Some("upload=2".into()),
+                    profile_web_page_url: Some("https://portal.example.com".into()),
+                    profile_update_interval: Some("24".into()),
+                },
+            ),
+        ];
+        let metadata = merge_fetch_metadata(&loaded);
+        assert_eq!(metadata.subscription_userinfo.as_deref(), Some("upload=1"));
+        assert_eq!(
+            metadata.profile_web_page_url.as_deref(),
+            Some("https://portal.example.com")
+        );
+        assert_eq!(metadata.profile_update_interval.as_deref(), Some("24"));
     }
 
     fn fixture_config() -> AppConfig {

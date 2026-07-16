@@ -34,7 +34,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | HTTP-05 | [x] | `GET /p/*path` private subscriptions | Real `private_sub.toml` smoke test |
 | HTTP-06 | [x] | API-mode token and local-source authorization boundary | Default/local sources require token; explicit nodes and trusted private rewrites tested |
 | HTTP-07 | [x] | Core query flags | insert/append_type/sort/scv/fdn/udp/tfo support true/false overrides; optional rule-provider flags track EXP-08 |
-| HTTP-08 | [ ] | Response metadata parity | Subscription user-info and managed headers |
+| HTTP-08 | [x] | Response metadata parity | Subscription user-info and managed headers are preserved across the byte-weighted cache and forwarded only when enabled |
 
 ## Resource and concurrency model
 
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 48 tests including Netch, structured subscriptions and WireGuard golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 50 tests including response metadata caching, Netch, structured subscriptions and WireGuard golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/WireGuard/geo/final semantics covered; expand to Clash |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

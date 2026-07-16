@@ -24,7 +24,21 @@ pub struct Fetcher {
 
 struct CachedValue {
     body: Bytes,
+    metadata: FetchMetadata,
     expires_at: Instant,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FetchMetadata {
+    pub subscription_userinfo: Option<String>,
+    pub profile_web_page_url: Option<String>,
+    pub profile_update_interval: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FetchResult {
+    pub body: Bytes,
+    pub metadata: FetchMetadata,
 }
 
 impl Fetcher {
@@ -41,7 +55,11 @@ impl Fetcher {
         let cache = Cache::builder()
             .max_capacity(config.advance.cache_capacity_bytes)
             .weigher(|_key: &String, value: &Arc<CachedValue>| {
-                value.body.len().min(u32::MAX as usize) as u32
+                value
+                    .body
+                    .len()
+                    .saturating_add(metadata_len(&value.metadata))
+                    .min(u32::MAX as usize) as u32
             })
             .build();
         Ok(Self {
@@ -54,6 +72,17 @@ impl Fetcher {
     }
 
     pub async fn get(&self, source: &str, ttl: Duration, allow_local: bool) -> Result<Bytes> {
+        self.get_with_metadata(source, ttl, allow_local)
+            .await
+            .map(|result| result.body)
+    }
+
+    pub async fn get_with_metadata(
+        &self,
+        source: &str,
+        ttl: Duration,
+        allow_local: bool,
+    ) -> Result<FetchResult> {
         let source = resolve_env(source);
         if source.starts_with("http://") || source.starts_with("https://") {
             return self.get_http(&source, ttl).await;
@@ -64,17 +93,19 @@ impl Fetcher {
             }
             let relative = source.trim_start_matches("file://").trim_start_matches('/');
             let path = secure_join(&self.file_share_root, relative)?;
-            return read_limited(&path, self.max_bytes).await;
+            return read_limited(&path, self.max_bytes).await.map(local_result);
         }
         if allow_local {
-            return read_limited(Path::new(&source), self.max_bytes).await;
+            return read_limited(Path::new(&source), self.max_bytes)
+                .await
+                .map(local_result);
         }
         Err(AppError::BadRequest(format!(
             "unsupported source: {source}"
         )))
     }
 
-    async fn get_http(&self, url: &str, ttl: Duration) -> Result<Bytes> {
+    async fn get_http(&self, url: &str, ttl: Duration) -> Result<FetchResult> {
         if ttl == Duration::ZERO {
             return self.download(url).await;
         }
@@ -82,7 +113,7 @@ impl Fetcher {
             && let Some(value) = self.cache.get(url).await
         {
             if value.expires_at > Instant::now() {
-                return Ok(value.body.clone());
+                return Ok(cached_result(&value));
             }
             self.cache.invalidate(url).await;
         }
@@ -92,18 +123,19 @@ impl Fetcher {
         let value = self
             .cache
             .try_get_with(key, async move {
-                let body = fetcher.download(&download_url).await?;
+                let result = fetcher.download(&download_url).await?;
                 Result::<Arc<CachedValue>>::Ok(Arc::new(CachedValue {
-                    body,
+                    body: result.body,
+                    metadata: result.metadata,
                     expires_at: Instant::now() + ttl,
                 }))
             })
             .await
             .map_err(|error| AppError::Upstream(error.to_string()))?;
-        Ok(value.body.clone())
+        Ok(cached_result(&value))
     }
 
-    async fn download(&self, url: &str) -> Result<Bytes> {
+    async fn download(&self, url: &str) -> Result<FetchResult> {
         let response = self
             .client
             .get(url)
@@ -112,6 +144,11 @@ impl Fetcher {
             .map_err(|error| AppError::Upstream(error.to_string()))?
             .error_for_status()
             .map_err(|error| AppError::Upstream(error.to_string()))?;
+        let metadata = FetchMetadata {
+            subscription_userinfo: header_value(response.headers(), "subscription-userinfo"),
+            profile_web_page_url: header_value(response.headers(), "profile-web-page-url"),
+            profile_update_interval: header_value(response.headers(), "profile-update-interval"),
+        };
         if response
             .content_length()
             .is_some_and(|length| length > self.max_bytes as u64)
@@ -138,7 +175,43 @@ impl Fetcher {
             }
             body.extend_from_slice(&chunk);
         }
-        Ok(body.freeze())
+        Ok(FetchResult {
+            body: body.freeze(),
+            metadata,
+        })
+    }
+}
+
+fn header_value(headers: &reqwest::header::HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned)
+}
+
+fn metadata_len(metadata: &FetchMetadata) -> usize {
+    [
+        &metadata.subscription_userinfo,
+        &metadata.profile_web_page_url,
+        &metadata.profile_update_interval,
+    ]
+    .into_iter()
+    .flatten()
+    .map(String::len)
+    .sum()
+}
+
+fn local_result(body: Bytes) -> FetchResult {
+    FetchResult {
+        body,
+        metadata: FetchMetadata::default(),
+    }
+}
+
+fn cached_result(value: &CachedValue) -> FetchResult {
+    FetchResult {
+        body: value.body.clone(),
+        metadata: value.metadata.clone(),
     }
 }
 
