@@ -283,7 +283,7 @@ fn serialize_clash_yaml(config: &Value, options: &ClashRulesetOptions) -> Result
             write_map_entry(&mut output, key, value, 0, &[key.as_str()])?;
         }
     }
-    Ok(output)
+    Ok(output.trim_start_matches(['\r', '\n']).to_owned())
 }
 
 fn write_styled_sequence(
@@ -1089,6 +1089,7 @@ mod tests {
             },
         )
         .unwrap();
+        assert!(!flow.starts_with(['\r', '\n']));
         assert!(flow.contains("proxies:\n  - {name: edge,"));
         assert!(flow.contains("path: \"\""));
         assert!(flow.contains("proxy-groups:\n  - name: GLOBAL"));

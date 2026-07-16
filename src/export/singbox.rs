@@ -233,7 +233,8 @@ pub fn to_singbox_full_with_options(
         .collect();
     let mut generated = 0usize;
     let mut final_outbound = None;
-    for ruleset in rulesets {
+    let merged_rulesets = merge_adjacent_rulesets(rulesets);
+    for ruleset in &merged_rulesets {
         if max_rules > 0 && generated >= max_rules {
             break;
         }
@@ -317,6 +318,26 @@ pub fn to_singbox_full_with_options(
     })
 }
 
+fn merge_adjacent_rulesets(rulesets: &[LoadedRuleset]) -> Vec<LoadedRuleset> {
+    let mut merged: Vec<LoadedRuleset> = Vec::with_capacity(rulesets.len());
+    for ruleset in rulesets {
+        if let Some(previous) = merged.last_mut()
+            && !previous.source.is_empty()
+            && !ruleset.source.is_empty()
+            && previous.group == ruleset.group
+            && previous.format == ruleset.format
+        {
+            previous.source.push('|');
+            previous.source.push_str(&ruleset.source);
+            previous.content.push('\n');
+            previous.content.push_str(&ruleset.content);
+        } else {
+            merged.push(ruleset.clone());
+        }
+    }
+    merged
+}
+
 fn apply_dns_proxy_detour(config: &mut Map<String, Value>) {
     let target = config
         .get("outbounds")
@@ -367,7 +388,7 @@ fn singbox_rule_value(kind: &str, value: &str) -> Option<(&'static str, Value, b
         "DOMAIN-SUFFIX" => string("domain_suffix", lowered()),
         "DOMAIN-KEYWORD" => string("domain_keyword", lowered()),
         "DOMAIN-REGEX" => string("domain_regex", value.to_owned()),
-        "IP-CIDR" | "IP-CIDR6" => string("ip_cidr", value.to_owned()),
+        "IP-CIDR" => string("ip_cidr", value.to_owned()),
         "SRC-IP-CIDR" => string("source_ip_cidr", value.to_owned()),
         "PROCESS-NAME" => string("process_name", value.to_owned()),
         "PROCESS-PATH" => string("process_path", value.to_owned()),
@@ -409,23 +430,31 @@ fn singbox_rule_value(kind: &str, value: &str) -> Option<(&'static str, Value, b
 }
 
 fn push_singbox_rule(rules: &mut Vec<Value>, field: &'static str, value: Value, scalar: bool) {
-    if scalar {
-        let mut rule = Map::new();
-        rule.insert(field.into(), value);
-        rules.push(Value::Object(rule));
-        return;
-    }
-    if let Some(values) = rules
+    let existing = rules
         .iter_mut()
         .filter_map(Value::as_object_mut)
-        .find_map(|rule| rule.get_mut(field).and_then(Value::as_array_mut))
-    {
-        values.push(value);
+        .find(|rule| !rule.contains_key("action"));
+    if scalar {
+        if let Some(rule) = existing {
+            rule.insert(field.into(), value);
+        } else {
+            let mut rule = Map::new();
+            rule.insert(field.into(), value);
+            rules.push(Value::Object(rule));
+        }
         return;
     }
-    let mut rule = Map::new();
-    rule.insert(field.into(), Value::Array(vec![value]));
-    rules.push(Value::Object(rule));
+    if let Some(rule) = existing {
+        if let Some(values) = rule.get_mut(field).and_then(Value::as_array_mut) {
+            values.push(value);
+        } else {
+            rule.insert(field.into(), Value::Array(vec![value]));
+        }
+    } else {
+        let mut rule = Map::new();
+        rule.insert(field.into(), Value::Array(vec![value]));
+        rules.push(Value::Object(rule));
+    }
 }
 
 fn normalize_port_range(value: &str) -> Option<String> {
@@ -656,19 +685,14 @@ fn add_tls(object: &mut Map<String, Value>, proxy: &Proxy) {
     let mut tls = Map::new();
     tls.insert("enabled".into(), true.into());
     insert_nonempty(&mut tls, "server_name", &proxy.server_name);
-    if let Some(insecure) = proxy.skip_cert_verify {
-        tls.insert("insecure".into(), insecure.into());
-    }
+    tls.insert(
+        "insecure".into(),
+        proxy.skip_cert_verify.unwrap_or(false).into(),
+    );
     if !proxy.alpn.is_empty() {
         tls.insert("alpn".into(), json!(proxy.alpn));
     } else if proxy.kind == ProxyKind::Trojan {
         tls.insert("alpn".into(), json!(["h2", "http/1.1"]));
-    }
-    if !proxy.fingerprint.is_empty() {
-        tls.insert(
-            "utls".into(),
-            json!({"enabled": true, "fingerprint": proxy.fingerprint}),
-        );
     }
     if !proxy.public_key.is_empty() {
         tls.insert(
@@ -804,7 +828,7 @@ mod tests {
     }
 
     #[test]
-    fn exports_extended_rules_with_native_types_and_or_semantics() {
+    fn exports_extended_rules_in_one_go_compatible_object() {
         let rulesets = [LoadedRuleset {
             group: "PROXY".into(),
             source: String::new(),
@@ -864,17 +888,55 @@ mod tests {
         assert_eq!(field("source_port_range"), &json!([":1024"]));
         assert_eq!(field("user"), &json!(["ServiceUser"]));
         assert_eq!(field("user_id"), &json!([1000]));
-        assert!(
-            rules
-                .iter()
-                .all(|rule| { !(rule.get("domain").is_some() && rule.get("port").is_some()) })
-        );
-        assert!(
-            rules
-                .iter()
-                .filter(|rule| rule.get("outbound").is_some())
-                .all(|rule| rule["outbound"] == "PROXY")
-        );
+        let routed: Vec<_> = rules
+            .iter()
+            .filter(|rule| rule.get("outbound").is_some())
+            .collect();
+        assert_eq!(routed.len(), 1);
+        assert_eq!(routed[0]["outbound"], "PROXY");
+        assert!(routed[0].get("domain").is_some());
+        assert!(routed[0].get("port").is_some());
+    }
+
+    #[test]
+    fn merges_adjacent_same_group_rulesets_like_go() {
+        let rulesets = [
+            LoadedRuleset {
+                group: "PROXY".into(),
+                source: "https://rules.example/one.list".into(),
+                content: "DOMAIN,one.example".into(),
+                format: RulesetFormat::Surge,
+            },
+            LoadedRuleset {
+                group: "PROXY".into(),
+                source: "https://rules.example/two.list".into(),
+                content: "DOMAIN,two.example\nIP-CIDR6,2001:db8::/32".into(),
+                format: RulesetFormat::Surge,
+            },
+        ];
+        let output = to_singbox_full(
+            &[],
+            None,
+            &[],
+            &rulesets,
+            true,
+            0,
+            &HashMap::new(),
+            0,
+            false,
+            false,
+        )
+        .unwrap();
+        let config: Value = serde_json::from_str(&output).unwrap();
+        let routed: Vec<_> = config["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|rule| rule.get("outbound").is_some())
+            .collect();
+        assert_eq!(routed.len(), 1);
+        assert_eq!(routed[0]["domain"], json!(["one.example", "two.example"]));
+        assert!(routed[0].get("ip_cidr").is_none());
     }
 
     #[test]
