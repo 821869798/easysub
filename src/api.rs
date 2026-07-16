@@ -979,6 +979,31 @@ value = "sub?target=clash&url={node}&config={external}"
     }
 
     #[tokio::test]
+    async fn telegram_proxy_links_are_not_fetched_as_subscriptions() {
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair(
+                "url",
+                "https://t.me/socks?server=socks.example&port=1080&user=test&pass=secret&remarks=Telegram",
+            )
+            .finish();
+        let response = router(AppState::new(Arc::new(fixture_config())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"][0]["type"], "socks5");
+        assert_eq!(clash["proxies"][0]["name"], "Telegram");
+    }
+
+    #[tokio::test]
     async fn skips_failed_subscription_sources_when_enabled() {
         let mut config = fixture_config();
         config.advance.skip_failed_links = true;

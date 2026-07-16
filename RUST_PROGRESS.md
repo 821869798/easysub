@@ -60,7 +60,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | PARSE-06 | [x] | AnyTLS | Core and session fields tested |
 | PARSE-07 | [x] | Hysteria2 | Authentication, obfs, bandwidth, port hopping, CA and CWND fields tested |
 | PARSE-08 | [x] | HTTP/HTTPS/SOCKS5 URL nodes | Basic authentication supported |
-| PARSE-09 | [ ] | Telegram SOCKS/HTTP links | Go-compatible fixtures required |
+| PARSE-09 | [x] | Telegram SOCKS/HTTP links | tg:// and t.me parsing plus endpoint test |
 | PARSE-10 | [ ] | Netch links | Decide production need, then implement or document exclusion |
 | PARSE-11 | [ ] | Snell and WireGuard inputs | Model/export support is incomplete without parsers |
 | PARSE-12 | [-] | Subscription containers | Plain/base64 URI lists done; structured config formats remain |
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 39 tests including golden, property and query-compatibility suites |
+| TEST-01 | [x] | Rust unit/integration suite | 41 tests including golden, property and endpoint suites |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

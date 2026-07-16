@@ -17,7 +17,18 @@ pub fn parse_node(input: &str, group_id: u32) -> Result<Proxy> {
         .and_then(|tagged| tagged.split_once(',').map(|(_, link)| link))
         .unwrap_or(input);
 
-    let mut proxy = if input.starts_with("ss://") {
+    let mut proxy = if input.starts_with("https://t.me/socks") || input.starts_with("tg://socks") {
+        parse_telegram_proxy(input, ProxyKind::Socks5)?
+    } else if input.starts_with("https://t.me/http") || input.starts_with("tg://http") {
+        parse_telegram_proxy(
+            input,
+            if input.contains("/https") {
+                ProxyKind::Https
+            } else {
+                ProxyKind::Http
+            },
+        )?
+    } else if input.starts_with("ss://") {
         parse_shadowsocks(input)?
     } else if input.starts_with("vmess://") || input.starts_with("vmess1://") {
         parse_vmess(input)?
@@ -94,9 +105,38 @@ pub fn looks_like_proxy(value: &str) -> bool {
         "hy2://",
         "socks://",
         "socks5://",
+        "https://t.me/socks",
+        "tg://socks",
+        "https://t.me/http",
+        "tg://http",
     ]
     .iter()
     .any(|prefix| value.starts_with(prefix))
+}
+
+fn parse_telegram_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
+    let url = Url::parse(input)
+        .map_err(|error| AppError::BadRequest(format!("invalid Telegram proxy URL: {error}")))?;
+    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let server = value(&query, &["server"]);
+    if server.is_empty() {
+        return Err(AppError::BadRequest(
+            "Telegram proxy URL has no server".into(),
+        ));
+    }
+    let port = value(&query, &["port"])
+        .parse::<u16>()
+        .map_err(|_| AppError::BadRequest("invalid Telegram proxy port".into()))?;
+    let mut proxy = Proxy::new(kind, server, port);
+    proxy.username = value(&query, &["user", "username"]);
+    proxy.password = value(&query, &["pass", "password"]);
+    proxy.group = value(&query, &["group"]);
+    proxy.name = non_empty(
+        value(&query, &["remarks"]),
+        &format!("{}:{}", proxy.server, proxy.port),
+    );
+    proxy.tls = kind == ProxyKind::Https;
+    Ok(proxy)
 }
 
 fn parse_shadowsocks(input: &str) -> Result<Proxy> {
@@ -734,5 +774,27 @@ mod tests {
         .unwrap();
         assert_eq!(nodes.len(), 2);
         assert!(nodes.iter().all(|node| node.group_id == 7));
+    }
+
+    #[test]
+    fn parses_telegram_socks_and_http_links() {
+        let socks = parse_node(
+            "tg://socks?server=socks.example&port=1080&user=test&pass=secret&remarks=Telegram+SOCKS&group=TG",
+            0,
+        )
+        .unwrap();
+        assert_eq!(socks.kind, ProxyKind::Socks5);
+        assert_eq!(socks.username, "test");
+        assert_eq!(socks.password, "secret");
+        assert_eq!(socks.name, "Telegram SOCKS");
+        assert_eq!(socks.group, "TG");
+
+        let http = parse_node(
+            "https://t.me/https?server=http.example&port=8443&user=test&pass=secret&remarks=Telegram+HTTPS",
+            0,
+        )
+        .unwrap();
+        assert_eq!(http.kind, ProxyKind::Https);
+        assert!(http.tls);
     }
 }
