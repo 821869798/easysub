@@ -154,17 +154,29 @@ async fn subscription(
         .max(1);
     let ttl = Duration::from_secs(state.config.advance.cache_subscription);
 
+    let skip_failed = state.config.advance.skip_failed_links;
     let mut loaded: Vec<(usize, Vec<Proxy>)> = stream::iter(sources.into_iter().enumerate())
         .map(|(index, source)| {
             let state = state.clone();
             async move {
-                if looks_like_proxy(&source) {
-                    return parse_node(&source, index as u32).map(|node| (index, vec![node]));
+                let result = async {
+                    if looks_like_proxy(&source) {
+                        return parse_node(&source, index as u32).map(|node| vec![node]);
+                    }
+                    let bytes = state.fetcher.get(&source, ttl, false).await?;
+                    let text = std::str::from_utf8(&bytes)
+                        .map_err(|_| AppError::BadRequest("subscription is not UTF-8".into()))?;
+                    parse_subscription(text, index as u32)
                 }
-                let bytes = state.fetcher.get(&source, ttl, false).await?;
-                let text = std::str::from_utf8(&bytes)
-                    .map_err(|_| AppError::BadRequest("subscription is not UTF-8".into()))?;
-                parse_subscription(text, index as u32).map(|nodes| (index, nodes))
+                .await;
+                match result {
+                    Ok(nodes) => Ok((index, nodes)),
+                    Err(error) if skip_failed => {
+                        tracing::warn!(%error, %source, "skipping failed subscription source");
+                        Ok((index, Vec::new()))
+                    }
+                    Err(error) => Err(error),
+                }
             }
         })
         .buffer_unordered(concurrency)
@@ -172,6 +184,11 @@ async fn subscription(
         .await?;
     loaded.sort_by_key(|(index, _)| *index);
     let nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes)| nodes).collect();
+    if nodes.is_empty() {
+        return Err(AppError::BadRequest(
+            "all subscription sources failed or contained no supported nodes".into(),
+        ));
+    }
 
     let append_type = query.append_type
         || state.config.common.append_proxy_type
@@ -449,10 +466,14 @@ async fn load_rulesets(
         .min(specs.len())
         .max(1);
     let ttl = Duration::from_secs(state.config.advance.cache_ruleset);
-    let mut loaded: Vec<(usize, LoadedRuleset)> = stream::iter(specs.iter().cloned().enumerate())
-        .map(|(index, spec)| {
-            let state = state.clone();
-            async move {
+    let skip_failed = state.config.advance.skip_failed_links;
+    let mut loaded: Vec<(usize, Option<LoadedRuleset>)> = stream::iter(
+        specs.iter().cloned().enumerate(),
+    )
+    .map(|(index, spec)| {
+        let state = state.clone();
+        async move {
+            let result = async {
                 let content = if spec.inline {
                     spec.source.clone()
                 } else {
@@ -461,21 +482,31 @@ async fn load_rulesets(
                         .map_err(|_| AppError::BadRequest("ruleset is not UTF-8".into()))?
                         .to_owned()
                 };
-                Ok::<_, AppError>((
-                    index,
-                    LoadedRuleset {
-                        group: spec.group,
-                        content,
-                        format: spec.format,
-                    },
-                ))
+                Ok::<_, AppError>(LoadedRuleset {
+                    group: spec.group,
+                    content,
+                    format: spec.format,
+                })
             }
-        })
-        .buffer_unordered(concurrency)
-        .try_collect()
-        .await?;
+            .await;
+            match result {
+                Ok(ruleset) => Ok((index, Some(ruleset))),
+                Err(error) if skip_failed => {
+                    tracing::warn!(%error, source = %spec.source, "skipping failed ruleset");
+                    Ok((index, None))
+                }
+                Err(error) => Err(error),
+            }
+        }
+    })
+    .buffer_unordered(concurrency)
+    .try_collect()
+    .await?;
     loaded.sort_by_key(|(index, _)| *index);
-    Ok(loaded.into_iter().map(|(_, ruleset)| ruleset).collect())
+    Ok(loaded
+        .into_iter()
+        .filter_map(|(_, ruleset)| ruleset)
+        .collect())
 }
 
 fn query_variables(raw_query: Option<&str>) -> std::collections::HashMap<String, String> {
@@ -646,5 +677,61 @@ value = "sub?target=clash&url={node}&config={external}"
         let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
         assert_eq!(clash["proxies"][0]["name"], "edge");
         assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
+    }
+
+    #[tokio::test]
+    async fn skips_failed_subscription_sources_when_enabled() {
+        let mut config = fixture_config();
+        config.advance.skip_failed_links = true;
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair(
+                "url",
+                "unsupported://bad|trojan://secret@example.com:443#edge",
+            )
+            .finish();
+        let response = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"].as_sequence().unwrap().len(), 1);
+        assert_eq!(clash["proxies"][0]["name"], "edge");
+    }
+
+    #[tokio::test]
+    async fn preserves_ruleset_order_while_skipping_failures() {
+        let state = AppState::new(Arc::new(fixture_config())).unwrap();
+        let specs = [
+            external::RulesetSpec {
+                group: "BROKEN".into(),
+                source: "unsupported://rules".into(),
+                interval: 0,
+                format: external::RulesetFormat::Surge,
+                inline: false,
+            },
+            external::RulesetSpec {
+                group: "FINAL".into(),
+                source: "[]FINAL".into(),
+                interval: 0,
+                format: external::RulesetFormat::Surge,
+                inline: true,
+            },
+        ];
+        let loaded = load_rulesets(&state, &specs).await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].group, "FINAL");
+
+        let mut strict_config = fixture_config();
+        strict_config.advance.skip_failed_links = false;
+        let strict_state = AppState::new(Arc::new(strict_config)).unwrap();
+        assert!(load_rulesets(&strict_state, &specs).await.is_err());
     }
 }

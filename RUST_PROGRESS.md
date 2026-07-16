@@ -1,0 +1,134 @@
+# easysub Rust rewrite progress
+
+Last updated: 2026-07-16
+
+Branch: `feat/rust-rewrite`
+
+Target: replace the Go service only after every P0 acceptance item below passes.
+
+## Status legend
+
+- `[x]` implemented and covered by an automated or recorded real-service test.
+- `[-]` usable, but compatibility or verification work remains.
+- `[ ]` not implemented.
+- `[~]` intentionally different from Go; the decision and safety boundary are recorded.
+
+## Overall acceptance gates
+
+- [-] Feature parity: all production inputs and routes used by the current deployment work.
+- [-] Correctness: Rust output has a maintained Go/Rust golden corpus.
+- [-] Reliability: malformed inputs are fuzzed and upstream failures follow configured policy.
+- [-] Performance: release throughput, latency, peak memory, and binary size have repeatable gates.
+- [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
+
+The rewrite is currently a usable development implementation, not yet a complete Go replacement.
+
+## HTTP and runtime
+
+| ID | Status | Item | Acceptance evidence |
+|---|---|---|---|
+| HTTP-01 | [x] | Axum + Tokio service, graceful shutdown | Real listener smoke test |
+| HTTP-02 | [x] | `GET /healthz` | Returns 204 |
+| HTTP-03 | [x] | `GET /sub` for Clash and sing-box | YAML/JSON endpoint tests |
+| HTTP-04 | [x] | `GET /ruleset` MRS response | Unit and compatibility fixtures |
+| HTTP-05 | [x] | `GET /p/*path` private subscriptions | Real `private_sub.toml` smoke test |
+| HTTP-06 | [ ] | API-mode token and local-source authorization parity | Unauthorized/authorized tests |
+| HTTP-07 | [-] | Query flags | `append_type` and `sort` done; insert/scv/fdn/udp/tfo/ruleset flags remain |
+| HTTP-08 | [ ] | Response metadata parity | Subscription user-info and managed headers |
+
+## Resource and concurrency model
+
+| ID | Status | Item | Acceptance evidence |
+|---|---|---|---|
+| RES-01 | [~] | No Go-style global concurrency limit of 3 | 16 concurrent full-ACL requests passed |
+| RES-02 | [x] | Maximum upstream response bytes | Stream stops at configured byte limit |
+| RES-03 | [x] | Byte-weighted bounded cache | Moka cache uses response body weight |
+| RES-04 | [x] | Request coalescing | Same upstream key shares in-flight fetch |
+| RES-05 | [x] | URL/ruleset/rule-count limits | Exact-limit tests |
+| RES-06 | [x] | Heavy-task semaphore | MRS/zstd work only |
+| RES-07 | [ ] | Repeatable peak-memory measurement | Record cold and concurrent workloads |
+
+## Subscription parsing
+
+| ID | Status | Item | Notes |
+|---|---|---|---|
+| PARSE-01 | [x] | SIP002 Shadowsocks | Base64 and plugin fields |
+| PARSE-02 | [-] | VMess / VMess1 | JSON form done; standard URL, Kitsunebi, Quan and Shadowrocket variants remain |
+| PARSE-03 | [-] | VLESS | Common URL fields done; transport edge cases need golden tests |
+| PARSE-04 | [-] | Trojan | Common URL fields done; transport aliases need golden tests |
+| PARSE-05 | [-] | TUIC | Core fields done; remaining timing/stream fields |
+| PARSE-06 | [x] | AnyTLS | Core and session fields tested |
+| PARSE-07 | [-] | Hysteria2 | Core fields done; port hopping/CA/CWND fields remain |
+| PARSE-08 | [x] | HTTP/HTTPS/SOCKS5 URL nodes | Basic authentication supported |
+| PARSE-09 | [ ] | Telegram SOCKS/HTTP links | Go-compatible fixtures required |
+| PARSE-10 | [ ] | Netch links | Decide production need, then implement or document exclusion |
+| PARSE-11 | [ ] | Snell and WireGuard inputs | Model/export support is incomplete without parsers |
+| PARSE-12 | [-] | Subscription containers | Plain/base64 URI lists done; structured config formats remain |
+
+## Exporters
+
+| ID | Status | Item | Notes |
+|---|---|---|---|
+| EXP-01 | [x] | Deterministic node names and ordering | Duplicate-name tests |
+| EXP-02 | [-] | Clash node output | Common protocols done; missing protocol fields track parser rows |
+| EXP-03 | [-] | sing-box node output | Common protocols done; missing protocol fields track parser rows |
+| EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
+| EXP-05 | [-] | Group types | select/url-test/fallback/load-balance/relay done; SSID/provider options remain |
+| EXP-06 | [-] | Rule injection | Common domain/IP/process/port rules done |
+| EXP-07 | [ ] | sing-box GEOIP/GEOSITE transformations | Required for full existing-config parity |
+| EXP-08 | [ ] | Clash rule-provider optimization | Optional performance feature; correctness must not depend on it |
+
+## External configuration and rulesets
+
+| ID | Status | Item | Notes |
+|---|---|---|---|
+| RULE-01 | [x] | Shadowed/repeated external INI keys | Order preserved |
+| RULE-02 | [x] | Liquid rendering and Go-compatible bool filter | Template tests |
+| RULE-03 | [x] | Surge, QuanX, Clash domain/IPCIDR/classical inputs | Basic conversion implemented |
+| RULE-04 | [x] | Inline rules including `[]FINAL` | Clash MATCH and sing-box final tests |
+| RULE-05 | [x] | Configured skip-on-fetch-failure behavior | Subscription/ruleset tests cover skip and strict modes |
+| RULE-06 | [ ] | Full uncommon INI/group/provider syntax | Fixture-driven implementation |
+| RULE-07 | [x] | MRS v1 Domain/IPCIDR encoder | Decompressed bytes match Mihomo fixtures |
+| RULE-08 | [ ] | Large/mixed ruleset golden and memory corpus | Include exact limit behavior |
+
+## Private subscriptions
+
+| ID | Status | Item | Notes |
+|---|---|---|---|
+| PRIV-01 | [x] | `private_sub.toml` loading | Relative to main config |
+| PRIV-02 | [x] | Ordered nested variables and form encoding | Unit test |
+| PRIV-03 | [x] | `EASYSUB_PRIVATE` content override | Same startup path as file content |
+| PRIV-04 | [x] | Internal `/p/*path` rewrite | No loopback HTTP request |
+
+## Verification and release
+
+| ID | Status | Item | Acceptance evidence |
+|---|---|---|---|
+| TEST-01 | [x] | Rust unit/integration suite | 21 tests after RULE-05 implementation |
+| TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
+| TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
+| TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |
+| TEST-05 | [-] | Performance baseline | Full ACL: 0.525 s cold; 16 requests: 0.484 s wall on current machine |
+| TEST-06 | [x] | Release binary-size baseline | 7.63 MiB on Windows x86-64 |
+| TEST-07 | [ ] | CI gates | fmt, clippy, tests, golden, fuzz smoke, release size |
+| DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |
+| CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
+
+## Work order
+
+1. P0 correctness: RULE-05, RULE-07 edge corpus, EXP-07, HTTP-06.
+2. P0 input parity: PARSE-02/03/04/05/07 fixtures and fields used in production.
+3. P1 verification: TEST-03, TEST-04, TEST-05, TEST-07.
+4. P1 compatibility: remaining query flags, group/provider syntax, response metadata.
+5. P2 optional features: Netch and Clash rule-provider optimization if measurements justify them.
+6. Release: DOC-01, CUT-01, then remove Go only after all P0 gates are `[x]`.
+
+## Milestone log
+
+| Commit | Milestone |
+|---|---|
+| `9ed5a4c` | Axum runtime, core parsers/exporters, bounded fetch/cache, MRS encoder |
+| `fc31113` | External INI configs, custom groups, and rulesets |
+| `6a92641` | Private subscription rewrites |
+
+Every later implementation commit must update the relevant status/evidence row in this file.
