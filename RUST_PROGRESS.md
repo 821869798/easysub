@@ -53,7 +53,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | ID | Status | Item | Notes |
 |---|---|---|---|
 | PARSE-01 | [x] | SIP002 Shadowsocks | Base64 and plugin fields |
-| PARSE-02 | [-] | VMess / VMess1 | JSON form done; standard URL, Kitsunebi, Quan and Shadowrocket variants remain |
+| PARSE-02 | [x] | VMess / VMess1 | JSON, standard URL, Kitsunebi, Quan and Shadowrocket fixtures |
 | PARSE-03 | [-] | VLESS | Common URL fields done; transport edge cases need golden tests |
 | PARSE-04 | [-] | Trojan | Common URL fields done; transport aliases need golden tests |
 | PARSE-05 | [-] | TUIC | Core fields done; remaining timing/stream fields |
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 24 tests after HTTP-06 implementation |
+| TEST-01 | [x] | Rust unit/integration suite | 27 tests after PARSE-02 implementation |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
 | TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |

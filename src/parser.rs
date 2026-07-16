@@ -152,15 +152,28 @@ fn parse_shadowsocks(input: &str) -> Result<Proxy> {
 }
 
 fn parse_vmess(input: &str) -> Result<Proxy> {
-    let encoded = input
+    let raw = input
         .split_once("://")
         .map(|(_, value)| value)
         .unwrap_or(input);
-    let encoded = encoded.split(['?', '#']).next().unwrap_or(encoded);
+    let encoded = raw.split(['?', '#']).next().unwrap_or(raw);
+    if input.starts_with("vmess1://") || encoded.contains('@') {
+        return parse_vmess_url(input);
+    }
     let bytes = decode_base64(encoded)?;
-    let value: Value = serde_json::from_slice(&bytes)
-        .map_err(|error| AppError::BadRequest(format!("invalid VMess JSON: {error}")))?;
-    let get = |key: &str| json_string(&value, key);
+    if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+        return parse_vmess_json(&value);
+    }
+    let decoded = String::from_utf8(bytes)
+        .map_err(|_| AppError::BadRequest("VMess payload is not UTF-8".into()))?;
+    if decoded.contains("vmess,") && decoded.contains('=') {
+        return parse_vmess_quan(&decoded);
+    }
+    parse_vmess_shadowrocket(&decoded, raw)
+}
+
+fn parse_vmess_json(value: &Value) -> Result<Proxy> {
+    let get = |key: &str| json_string(value, key);
     let server = get("add");
     let port = get("port")
         .parse::<u16>()
@@ -172,16 +185,194 @@ fn parse_vmess(input: &str) -> Result<Proxy> {
     };
     proxy.uuid = get("id");
     proxy.alter_id = get("aid").parse().unwrap_or_default();
-    proxy.network = get("net");
+    proxy.network = non_empty(get("net"), "tcp");
     proxy.host = get("host");
     proxy.path = get("path");
+    if matches!(get("v").as_str(), "" | "1") {
+        if let Some((host, path)) = proxy
+            .host
+            .split_once(';')
+            .map(|(host, path)| (host.to_owned(), path.to_owned()))
+        {
+            proxy.host = host;
+            proxy.path = path;
+        }
+    }
     proxy.tls = !matches!(get("tls").as_str(), "" | "none");
     proxy.server_name = get("sni");
     proxy.method = match get("scy") {
         cipher if !cipher.is_empty() => cipher,
         _ => "auto".into(),
     };
+    apply_vmess_defaults(&mut proxy);
     Ok(proxy)
+}
+
+fn parse_vmess_url(input: &str) -> Result<Proxy> {
+    let normalized;
+    let input = if input.starts_with("vmess1://") {
+        normalized = input.replacen("vmess1://", "vmess://", 1);
+        normalized.as_str()
+    } else {
+        input
+    };
+    let url = Url::parse(input)
+        .map_err(|error| AppError::BadRequest(format!("invalid VMess URL: {error}")))?;
+    let server = url
+        .host_str()
+        .ok_or_else(|| AppError::BadRequest("VMess URL has no host".into()))?
+        .to_owned();
+    let port = url
+        .port()
+        .ok_or_else(|| AppError::BadRequest("VMess URL has no port".into()))?;
+    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let username = percent_decode(url.username());
+    let (transport, tls, credential) = match url.password().map(percent_decode) {
+        Some(credential) => {
+            let (transport, tls) = username
+                .split_once('+')
+                .map_or((username.as_str(), false), |(transport, security)| {
+                    (transport, security.eq_ignore_ascii_case("tls"))
+                });
+            (transport.to_owned(), tls, credential)
+        }
+        None => (
+            non_empty(value(&query, &["network"]), "tcp"),
+            parse_bool(&value(&query, &["tls"])).unwrap_or(false),
+            username,
+        ),
+    };
+    let (uuid, alter_id) = credential
+        .rsplit_once('-')
+        .filter(|(_, aid)| aid.parse::<u16>().is_ok())
+        .map_or((credential.as_str(), 0), |(uuid, aid)| {
+            (uuid, aid.parse().unwrap_or_default())
+        });
+    if uuid.is_empty() {
+        return Err(AppError::BadRequest("VMess URL has no UUID".into()));
+    }
+    let mut proxy = Proxy::new(ProxyKind::Vmess, server, port);
+    proxy.uuid = uuid.to_owned();
+    proxy.alter_id = alter_id;
+    proxy.network = transport;
+    proxy.tls = tls;
+    proxy.method = non_empty(value(&query, &["security", "cipher"]), "auto");
+    proxy.host = value(&query, &["host", "ws.host"]);
+    proxy.path = non_empty(
+        value(&query, &["path", "key"]),
+        url.path().trim_start_matches('/'),
+    );
+    if !proxy.path.is_empty() && !proxy.path.starts_with('/') {
+        proxy.path.insert(0, '/');
+    }
+    proxy.server_name = value(&query, &["sni", "peer"]);
+    proxy.name = non_empty_name(
+        url.fragment().unwrap_or_default(),
+        &proxy.server,
+        proxy.port,
+    );
+    apply_vmess_defaults(&mut proxy);
+    Ok(proxy)
+}
+
+fn parse_vmess_shadowrocket(decoded: &str, raw: &str) -> Result<Proxy> {
+    let (secret, endpoint) = decoded
+        .rsplit_once('@')
+        .ok_or_else(|| AppError::BadRequest("unsupported VMess payload".into()))?;
+    let (method, uuid) = secret
+        .split_once(':')
+        .ok_or_else(|| AppError::BadRequest("invalid Shadowrocket VMess secret".into()))?;
+    let (server, port) = split_endpoint(endpoint)?;
+    let query = raw
+        .split_once('?')
+        .map(|(_, query)| query.split('#').next().unwrap_or(query))
+        .unwrap_or_default();
+    let query: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
+        .into_owned()
+        .collect();
+    let mut proxy = Proxy::new(ProxyKind::Vmess, server, port);
+    proxy.uuid = uuid.to_owned();
+    proxy.alter_id = value(&query, &["aid"]).parse().unwrap_or_default();
+    proxy.method = non_empty(method.to_owned(), "auto");
+    proxy.network = if value(&query, &["obfs"]) == "websocket" {
+        "ws".into()
+    } else {
+        non_empty(value(&query, &["network"]), "tcp")
+    };
+    proxy.host = value(&query, &["obfsParam", "wsHost"]);
+    proxy.path = value(&query, &["path", "wspath"]);
+    proxy.tls = parse_bool(&value(&query, &["tls"])).unwrap_or(false);
+    proxy.name = non_empty(
+        value(&query, &["remarks"]),
+        &format!("{}:{}", proxy.server, proxy.port),
+    );
+    apply_vmess_defaults(&mut proxy);
+    Ok(proxy)
+}
+
+fn parse_vmess_quan(decoded: &str) -> Result<Proxy> {
+    let (name, definition) = decoded
+        .split_once('=')
+        .ok_or_else(|| AppError::BadRequest("invalid Quan VMess assignment".into()))?;
+    let normalized = format!("{},{}", name.trim(), definition.trim());
+    let parts: Vec<_> = normalized.split(',').map(str::trim).collect();
+    if parts.len() < 6 || !parts[1].eq_ignore_ascii_case("vmess") {
+        return Err(AppError::BadRequest("invalid Quan VMess payload".into()));
+    }
+    let port = parts[3]
+        .parse::<u16>()
+        .map_err(|_| AppError::BadRequest("invalid Quan VMess port".into()))?;
+    let mut proxy = Proxy::new(ProxyKind::Vmess, parts[2].to_owned(), port);
+    proxy.name = parts[0].to_owned();
+    proxy.method = parts[4].to_owned();
+    proxy.uuid = parts[5].trim_matches('"').to_owned();
+    proxy.network = "tcp".into();
+    for option in &parts[6..] {
+        let Some((key, value)) = option.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim().trim_matches('"');
+        match key {
+            "group" => proxy.group = value.to_owned(),
+            "over-tls" => proxy.tls = value.eq_ignore_ascii_case("true"),
+            "tls-host" => proxy.server_name = value.to_owned(),
+            "obfs-path" => proxy.path = value.to_owned(),
+            "obfs" if value.eq_ignore_ascii_case("ws") => proxy.network = "ws".into(),
+            "obfs-header" => {
+                for header in value.split(['|', '\r', '\n']) {
+                    if let Some((name, value)) = header.split_once(':') {
+                        if name.trim().eq_ignore_ascii_case("host") {
+                            proxy.host = value.trim().to_owned();
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    apply_vmess_defaults(&mut proxy);
+    Ok(proxy)
+}
+
+fn apply_vmess_defaults(proxy: &mut Proxy) {
+    if proxy.network.is_empty() {
+        proxy.network = "tcp".into();
+    }
+    if proxy.path.is_empty() {
+        proxy.path = "/".into();
+    }
+    if proxy.host.is_empty() && proxy.server.parse::<std::net::IpAddr>().is_err() {
+        proxy.host = proxy.server.clone();
+    }
+}
+
+fn non_empty(value: String, fallback: &str) -> String {
+    if value.is_empty() {
+        fallback.to_owned()
+    } else {
+        value
+    }
 }
 
 fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
@@ -350,6 +541,62 @@ mod tests {
         assert_eq!(proxy.server, "185.177.216.134");
         assert_eq!(proxy.port, 22535);
         assert_eq!(proxy.group_id, 3);
+    }
+
+    #[test]
+    fn parses_standard_and_kitsunebi_vmess_urls() {
+        let standard = parse_node(
+            "vmess://ws+tls:52050057-f5e1-4b9e-b789-5f49b549fd21-2@edge.example:443?host=cdn.example&path=%2Fws&sni=tls.example#standard",
+            0,
+        )
+        .unwrap();
+        assert_eq!(standard.uuid, "52050057-f5e1-4b9e-b789-5f49b549fd21");
+        assert_eq!(standard.alter_id, 2);
+        assert_eq!(standard.network, "ws");
+        assert!(standard.tls);
+        assert_eq!(standard.host, "cdn.example");
+        assert_eq!(standard.path, "/ws");
+
+        let kitsunebi = parse_node(
+            "vmess1://52050057-f5e1-4b9e-b789-5f49b549fd21@kit.example:8443/ws?network=ws&tls=true&ws.host=cdn.kit.example#kit",
+            0,
+        )
+        .unwrap();
+        assert_eq!(kitsunebi.network, "ws");
+        assert!(kitsunebi.tls);
+        assert_eq!(kitsunebi.host, "cdn.kit.example");
+        assert_eq!(kitsunebi.path, "/ws");
+    }
+
+    #[test]
+    fn parses_shadowrocket_vmess_payload() {
+        let encoded = general_purpose::URL_SAFE_NO_PAD
+            .encode("auto:52050057-f5e1-4b9e-b789-5f49b549fd21@rocket.example:443");
+        let proxy = parse_node(
+            &format!(
+                "vmess://{encoded}?remarks=Rocket+Node&obfs=websocket&obfsParam=cdn.example&path=%2Frocket&tls=true"
+            ),
+            0,
+        )
+        .unwrap();
+        assert_eq!(proxy.name, "Rocket Node");
+        assert_eq!(proxy.network, "ws");
+        assert_eq!(proxy.host, "cdn.example");
+        assert_eq!(proxy.path, "/rocket");
+        assert!(proxy.tls);
+    }
+
+    #[test]
+    fn parses_quan_vmess_payload() {
+        let quan = r#"Quan Node = vmess, quan.example, 443, auto, "52050057-f5e1-4b9e-b789-5f49b549fd21", group=Quan, over-tls=true, tls-host=tls.quan.example, obfs=ws, obfs-path="/quan", obfs-header="Host: cdn.quan.example""#;
+        let encoded = general_purpose::URL_SAFE_NO_PAD.encode(quan);
+        let proxy = parse_node(&format!("vmess://{encoded}"), 0).unwrap();
+        assert_eq!(proxy.name, "Quan Node");
+        assert_eq!(proxy.group, "Quan");
+        assert_eq!(proxy.network, "ws");
+        assert_eq!(proxy.host, "cdn.quan.example");
+        assert_eq!(proxy.path, "/quan");
+        assert!(proxy.tls);
     }
 
     #[test]
