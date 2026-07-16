@@ -16,7 +16,7 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 ## Overall acceptance gates
 
 - [-] Feature parity: all production inputs and routes used by the current deployment work.
-- [-] Correctness: Rust output has a maintained Go/Rust golden corpus.
+- [x] Correctness: Rust output has a maintained Go/Rust golden corpus.
 - [x] Reliability: bounded property fuzz smoke and configured upstream-failure policy are tested.
 - [x] Performance: release throughput, latency, peak memory, and binary size have repeatable measurements and optional gates.
 - [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
@@ -104,9 +104,9 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 50 tests including response metadata caching, Netch, structured subscriptions and WireGuard golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 51 tests including response metadata caching, Netch, structured subscriptions and Go/Rust Clash + sing-box golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
-| TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/WireGuard/geo/final semantics covered; expand to Clash |
+| TEST-03 | [x] | Go/Rust golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
 | TEST-05 | [x] | Core and real-service performance harnesses | Structured support: 1k parse 1.511 ms; Clash 3.933 ms; sing-box 1.827 ms; 10k MRS 3.586 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
@@ -153,6 +153,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 go test ./...
 go vet ./...
+go run ./scratch # regenerate Go-owned Clash and sing-box golden fixtures
 cargo bench --bench core
 cargo build --release
 .\scripts\measure-release.ps1 -Concurrency 16

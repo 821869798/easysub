@@ -1,0 +1,25 @@
+allow-lan: true
+external-controller: 127.0.0.1:9090
+log-level: info
+mixed-port: 7890
+mode: Rule
+proxies:
+  - {name: TestWG, port: 51820, server: 1.2.3.4}
+  - {alterId: 0, cipher: auto, http-opts: {headers: {Host: [vmess.host.com]}, method: GET, path: [/vmess-path]}, name: TestVMessHTTP, network: http, port: 443, server: vmess.test.com, tls: false, type: vmess, uuid: e52002f2-d8de-48dc-b620-7b2f6b4a6829}
+  - {name: TestTrojan, password: trojan-password, port: 443, server: trojan.test.com, type: trojan}
+  - {down: 100, name: TestHysteria2, password: hy2-password, port: 443, server: hy2.test.com, sni: hy2.sni.com, type: hysteria2, up: 100}
+  - {name: TestSnell, port: 8080, server: snell.test.com}
+proxy-groups:
+  - name: proxy
+    proxies:
+        - DIRECT
+        - TestWG
+        - TestVMessHTTP
+        - TestTrojan
+        - TestHysteria2
+        - TestSnell
+    type: select
+rules:
+  - DOMAIN-SUFFIX,example.com,proxy
+  - IP-CIDR,10.0.0.0/8,proxy,no-resolve
+  - MATCH,DIRECT

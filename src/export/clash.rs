@@ -335,6 +335,19 @@ fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {
             ws.insert("headers".into(), json!({"Host": proxy.host}));
         }
         object.insert("ws-opts".into(), Value::Object(ws));
+    } else if proxy.network == "http" {
+        let mut headers = Map::new();
+        if !proxy.host.is_empty() {
+            headers.insert("Host".into(), json!([proxy.host]));
+        }
+        object.insert(
+            "http-opts".into(),
+            json!({
+                "method": "GET",
+                "path": [proxy.path],
+                "headers": headers,
+            }),
+        );
     } else if proxy.network == "grpc" {
         object.insert("grpc-opts".into(), json!({"grpc-service-name": proxy.path}));
     } else if proxy.network == "h2" {

@@ -7,12 +7,19 @@ import (
 
 	"github.com/821869798/easysub/config"
 	"github.com/821869798/easysub/define"
+	"github.com/821869798/easysub/export/clash"
 	"github.com/821869798/easysub/export/singbox"
+	"github.com/821869798/easysub/modules/tpl"
 )
 
 func main() {
-	// Initialize config using absolute path
-	config.LoadConfig(`D:\program\go\easysub\workdir\pref.toml`)
+	// The Go configuration resolves private-subscription paths from the process
+	// working directory, so generate fixtures from the checked-in workdir.
+	if err := os.Chdir("workdir"); err != nil {
+		slog.Error("enter workdir error: " + err.Error())
+		return
+	}
+	config.LoadConfig("pref.toml")
 
 	// Create test proxies for all optimized protocols
 	proxies := []*define.Proxy{
@@ -45,13 +52,13 @@ func main() {
 		},
 		// 3. Trojan (Default ALPN & Generic TLS uTLS check)
 		{
-			Type:       define.ProxyType_Trojan,
-			Remark:     "TestTrojan",
-			Hostname:   "trojan.test.com",
-			Port:       443,
-			Password:   "trojan-password",
-			TLSSecure:  true,
-			ServerName: "trojan.sni.com",
+			Type:        define.ProxyType_Trojan,
+			Remark:      "TestTrojan",
+			Hostname:    "trojan.test.com",
+			Port:        443,
+			Password:    "trojan-password",
+			TLSSecure:   true,
+			ServerName:  "trojan.sni.com",
 			Fingerprint: "chrome",
 		},
 		// 4. Hysteria2 (QUIC standard TLS check)
@@ -78,7 +85,7 @@ func main() {
 	}
 
 	// Read base conf
-	baseConfBytes, err := os.ReadFile(`D:\program\go\easysub\workdir\base\singbox.liquid`)
+	baseConfBytes, err := os.ReadFile("base/singbox.liquid")
 	if err != nil {
 		slog.Error("read base conf error: " + err.Error())
 		return
@@ -140,11 +147,57 @@ func main() {
 	}
 
 	// Write to temporary check file in absolute path
-	checkFilePath := `D:\program\go\easysub\scratch\generated_test_full.json`
+	checkFilePath := "../scratch/generated_test_full.json"
 	err = os.WriteFile(checkFilePath, []byte(output), 0644)
 	if err != nil {
 		slog.Error("write generated_test_full.json error: " + err.Error())
 		return
 	}
 	fmt.Println("Successfully wrote full test config to generated_test_full.json")
+
+	clashBase, err := os.ReadFile("base/clash.liquid")
+	if err != nil {
+		slog.Error("read Clash base conf error: " + err.Error())
+		return
+	}
+	clashArgs := map[string]interface{}{
+		"Request": map[string]interface{}{
+			"target": "clash",
+			"clash":  map[string]interface{}{"dns": false},
+		},
+		"Global": map[string]interface{}{
+			"clash": map[string]interface{}{
+				"mixed_port":          7890,
+				"allow_lan":           true,
+				"log_level":           "info",
+				"external_controller": "127.0.0.1:9090",
+			},
+		},
+	}
+	clashRender, err := tpl.RenderTemplate(string(clashBase), clashArgs)
+	if err != nil {
+		slog.Error("render Clash template error: " + err.Error())
+		return
+	}
+	clashSettings := define.NewExtraSettings()
+	clashSettings.NodePref = config.Global.NodePref
+	clashSettings.OverwriteOriginalRules = true
+	clashSettings.ClashRuleSetOptimize = false
+	clashRules := []*define.RulesetContent{
+		{RuleGroup: "proxy", RuleType: define.RULESET_SURGE, RuleContent: "DOMAIN-SUFFIX,example.com\nIP-CIDR,10.0.0.0/8,no-resolve"},
+		{RuleGroup: "DIRECT", RuleType: define.RULESET_SURGE, RuleContent: "[]FINAL"},
+	}
+	clashGroups := []*define.ProxyGroupConfig{
+		{Name: "proxy", Type: define.ProxyGroupType_Select, Proxies: []string{"[]DIRECT", ".*"}},
+	}
+	clashOutput, err := clash.ProxyToClash(proxies, clashRender, clashRules, clashGroups, clashSettings)
+	if err != nil {
+		slog.Error("generate Clash config error: " + err.Error())
+		return
+	}
+	if err := os.WriteFile("../scratch/generated_test_clash.yml", []byte(clashOutput), 0644); err != nil {
+		slog.Error("write generated_test_clash.yml error: " + err.Error())
+		return
+	}
+	fmt.Println("Successfully wrote Clash test config to generated_test_clash.yml")
 }
