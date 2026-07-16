@@ -4,5 +4,7 @@
 !rust-toolchain.toml
 !src/
 !src/**
+!benches/
+!benches/**
 !workdir/
 !workdir/**
