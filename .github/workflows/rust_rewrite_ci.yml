@@ -39,7 +39,7 @@ jobs:
     name: Correctness and compatibility
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install project Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -74,7 +74,7 @@ jobs:
       EASYSUB_BENCH_MAX_MRS_10000_DOMAINS_MS: "100"
       EASYSUB_BENCH_MAX_PARSE_10000_MIXED_RULES_MS: "100"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install project Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -106,13 +106,13 @@ jobs:
     name: Container build and health
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build local CI image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
