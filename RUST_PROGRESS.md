@@ -16,7 +16,7 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 ## Overall acceptance gates
 
 - [x] Feature parity: all production inputs and routes used by the current deployment work.
-- [x] Correctness: Rust output has a maintained Go/Rust golden corpus.
+- [x] Correctness: Rust output is checked against frozen legacy golden fixtures.
 - [x] Reliability: bounded property fuzz smoke and configured upstream-failure policy are tested.
 - [x] Performance: release throughput, latency, peak memory, and binary size have repeatable measurements and optional gates.
 - [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
@@ -104,9 +104,9 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 57 tests including full external INI fixtures, extended typed rules, metadata caching, large mixed rulesets, Netch and Go/Rust golden semantics |
-| TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
-| TEST-03 | [x] | Go/Rust golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
+| TEST-01 | [x] | Rust unit/integration suite | 57 tests including full external INI fixtures, extended typed rules, metadata caching, large mixed rulesets, Netch and legacy golden semantics |
+| TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
+| TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
 | TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.653 ms; Clash 3.817 ms; sing-box 1.819 ms; 10k MRS 3.784 ms; 10k mixed rules 3.287 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
@@ -152,9 +152,6 @@ Every later implementation commit must update the relevant status/evidence row i
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
-go test ./...
-go vet ./...
-go run ./scratch # regenerate Go-owned Clash and sing-box golden fixtures
 cargo bench --bench core
 cargo build --release
 .\scripts\measure-release.ps1 -Concurrency 16
