@@ -121,6 +121,7 @@ mod tests {
             name: "g".into(),
             kind: GroupKind::Select,
             selectors: vec!["[]DIRECT".into(), ".*".into(), "alpha".into()],
+            providers: Vec::new(),
             url: String::new(),
             interval: 0,
             tolerance: 0,

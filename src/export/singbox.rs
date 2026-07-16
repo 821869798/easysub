@@ -77,7 +77,7 @@ pub fn to_singbox_full(
             outbound.insert(
                 "type".into(),
                 match group_config.kind {
-                    GroupKind::Select | GroupKind::Relay => "selector",
+                    GroupKind::Select | GroupKind::Relay | GroupKind::Ssid => "selector",
                     GroupKind::UrlTest | GroupKind::Fallback | GroupKind::LoadBalance => "urltest",
                 }
                 .into(),

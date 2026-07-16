@@ -73,7 +73,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-02 | [x] | Clash node output | Modern URI protocols plus structured Snell/WireGuard fields tested |
 | EXP-03 | [x] | sing-box node output | Modern URI protocols and WireGuard endpoints tested; Snell intentionally skipped as unsupported |
 | EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
-| EXP-05 | [-] | Group types | select/url-test/fallback/load-balance/relay done; SSID/provider options remain |
+| EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [-] | Rule injection | Common domain/IP/process/port rules done |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
 | EXP-08 | [ ] | Clash rule-provider optimization | Optional performance feature; correctness must not depend on it |
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 45 tests including structured subscriptions and WireGuard golden semantics |
+| TEST-01 | [x] | Rust unit/integration suite | 47 tests including structured subscriptions, provider groups and WireGuard golden semantics |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/WireGuard/geo/final semantics covered; expand to Clash |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

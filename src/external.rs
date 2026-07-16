@@ -17,6 +17,7 @@ pub enum GroupKind {
     Fallback,
     LoadBalance,
     Relay,
+    Ssid,
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +25,7 @@ pub struct ProxyGroup {
     pub name: String,
     pub kind: GroupKind,
     pub selectors: Vec<String>,
+    pub providers: Vec<String>,
     pub url: String,
     pub interval: u64,
     pub tolerance: u64,
@@ -159,6 +161,7 @@ fn parse_group(value: &str) -> Option<ProxyGroup> {
         "fallback" => GroupKind::Fallback,
         "load-balance" => GroupKind::LoadBalance,
         "relay" => GroupKind::Relay,
+        "ssid" => GroupKind::Ssid,
         _ => return None,
     };
     let timed = matches!(
@@ -189,13 +192,30 @@ fn parse_group(value: &str) -> Option<ProxyGroup> {
     } else {
         (String::new(), 0, 0)
     };
+    let mut providers = Vec::new();
+    let selectors = parts[2..selector_end]
+        .iter()
+        .filter_map(|value| {
+            value.strip_prefix("!!PROVIDER=").map_or_else(
+                || Some((*value).to_owned()),
+                |names| {
+                    providers.extend(
+                        names
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty())
+                            .map(ToOwned::to_owned),
+                    );
+                    None
+                },
+            )
+        })
+        .collect();
     Some(ProxyGroup {
         name: parts[0].to_owned(),
         kind,
-        selectors: parts[2..selector_end]
-            .iter()
-            .map(|value| (*value).to_owned())
-            .collect(),
+        selectors,
+        providers,
         url,
         interval,
         tolerance,
@@ -230,5 +250,16 @@ mod tests {
         assert_eq!(config.rulesets[1].format, RulesetFormat::ClashDomain);
         assert_eq!(config.groups[0].name, "PROXY");
         assert!(config.overwrite_original_rules);
+    }
+
+    #[test]
+    fn parses_proxy_providers_and_ssid_groups() {
+        let config = parse(
+            "[custom]\ncustom_proxy_group=PROVIDER`select`!!PROVIDER=one,two\ncustom_proxy_group=WIFI`ssid`[]DIRECT",
+        )
+        .unwrap();
+        assert_eq!(config.groups[0].providers, ["one", "two"]);
+        assert!(config.groups[0].selectors.is_empty());
+        assert_eq!(config.groups[1].kind, GroupKind::Ssid);
     }
 }

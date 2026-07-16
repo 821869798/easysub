@@ -74,12 +74,21 @@ pub fn to_clash_full(
                             GroupKind::Fallback => "fallback",
                             GroupKind::LoadBalance => "load-balance",
                             GroupKind::Relay => "relay",
+                            GroupKind::Ssid => "ssid",
                         },
                     );
-                    group_value.insert(
-                        "proxies".into(),
-                        json!(group::members(group_config, &nodes)),
-                    );
+                    if !group_config.selectors.is_empty() || group_config.providers.is_empty() {
+                        group_value.insert(
+                            "proxies".into(),
+                            json!(group::members(group_config, &nodes)),
+                        );
+                    }
+                    if !group_config.providers.is_empty() {
+                        group_value.insert("use".into(), json!(group_config.providers));
+                    }
+                    if group_config.kind == GroupKind::LoadBalance {
+                        insert(&mut group_value, "strategy", "consistent-hashing");
+                    }
                     insert_nonempty(&mut group_value, "url", &group_config.url);
                     if group_config.interval > 0 {
                         group_value.insert("interval".into(), group_config.interval.into());
@@ -394,6 +403,7 @@ mod tests {
             name: "PROXY".into(),
             kind: GroupKind::Select,
             selectors: vec!["[]DIRECT".into()],
+            providers: Vec::new(),
             url: String::new(),
             interval: 0,
             tolerance: 0,
@@ -426,5 +436,34 @@ mod tests {
         assert_eq!(proxy["request-timeout"], 8000);
         assert_eq!(proxy["max-open-streams"], 100);
         assert_eq!(proxy["sni"], "tls.example");
+    }
+
+    #[test]
+    fn exports_provider_and_load_balance_groups() {
+        let groups = [
+            ProxyGroup {
+                name: "PROVIDER".into(),
+                kind: GroupKind::Select,
+                selectors: Vec::new(),
+                providers: vec!["one".into(), "two".into()],
+                url: String::new(),
+                interval: 0,
+                tolerance: 0,
+            },
+            ProxyGroup {
+                name: "BALANCE".into(),
+                kind: GroupKind::LoadBalance,
+                selectors: vec!["[]DIRECT".into()],
+                providers: Vec::new(),
+                url: "https://example.test/generate_204".into(),
+                interval: 300,
+                tolerance: 0,
+            },
+        ];
+        let output = to_clash_full(&[], None, &groups, &[], false, 0, false, false).unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        assert_eq!(config["proxy-groups"][0]["use"], json!(["one", "two"]));
+        assert!(config["proxy-groups"][0].get("proxies").is_none());
+        assert_eq!(config["proxy-groups"][1]["strategy"], "consistent-hashing");
     }
 }
