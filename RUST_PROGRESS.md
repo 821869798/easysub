@@ -30,7 +30,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | HTTP-01 | [x] | Axum + Tokio service, graceful shutdown | Real listener smoke test |
 | HTTP-02 | [x] | `GET /healthz` | Returns 204 |
 | HTTP-03 | [x] | `GET /sub` for Clash and sing-box | YAML/JSON endpoint tests |
-| HTTP-04 | [x] | `GET /ruleset` MRS response | Unit and compatibility fixtures |
+| HTTP-04 | [x] | `GET /ruleset` MRS response | Unit, merged multi-source and real-service compatibility tests |
 | HTTP-05 | [x] | `GET /p/*path` private subscriptions | Real `private_sub.toml` smoke test |
 | HTTP-06 | [x] | API-mode token and local-source authorization boundary | Default/local sources require token; explicit nodes and trusted private rewrites tested |
 | HTTP-07 | [x] | Core query flags | insert/append_type/sort/scv/fdn/udp/tfo support true/false overrides; optional rule-provider flags track EXP-08 |
@@ -90,7 +90,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | RULE-06 | [x] | Full uncommon INI/group/provider syntax | All Go-supported group kinds, provider selectors, timing fields and every checked-in deployment INI are fixture-tested |
 | RULE-07 | [x] | MRS v1 Domain/IPCIDR encoder | Decompressed bytes match Mihomo fixtures |
 | RULE-08 | [x] | Large/mixed ruleset golden and memory corpus | 25k mixed-rule corpus verifies deterministic Clash/sing-box output, exact 4,096-rule limit and bounded serialized output |
-| RULE-09 | [x] | Downloadable Clash HTTP MRS providers | Checked-in Stash rewrite emits no payload; all 25 generated `/ruleset` URLs return non-empty MRS |
+| RULE-09 | [x] | Downloadable Clash HTTP MRS providers | Real `private_sub.toml` Stash rewrite emits no payload; all 23 generated `/ruleset` URLs return HTTP 200, `application/octet-stream` and non-empty MRS, including merged sources with individually unmatched behaviors |
 
 ## Private subscriptions
 
@@ -105,7 +105,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 66 tests (63 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, metadata caching and Netch |
+| TEST-01 | [x] | Rust unit/integration suite | 68 tests (65 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, merged HTTP ruleset sources, metadata caching and Netch |
 | TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
 | TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

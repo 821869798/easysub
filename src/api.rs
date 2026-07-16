@@ -31,7 +31,7 @@ use crate::{
     model::{Proxy, RuleBehavior},
     mrs,
     parser::{looks_like_proxy, parse_node, parse_subscription},
-    rules::normalize_rules,
+    rules::normalize_rules_allow_empty,
     template,
 };
 
@@ -517,7 +517,7 @@ async fn ruleset(
             if max_rules > 0 && remaining == 0 {
                 break;
             }
-            rules.extend(normalize_rules(text, behavior, remaining)?);
+            rules.extend(normalize_rules_allow_empty(text, behavior, remaining));
         }
         mrs::encode(&rules, behavior)
     })
@@ -826,6 +826,7 @@ fn text_response(body: String, content_type: &'static str) -> Result<Response> {
 #[cfg(test)]
 mod tests {
     use std::{
+        io::Read,
         path::PathBuf,
         sync::atomic::{AtomicUsize, Ordering},
     };
@@ -873,6 +874,45 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn ruleset_combines_http_sources_when_one_has_no_matching_behavior() {
+        let upstream = Router::new()
+            .route("/domains", get(|| async { "DOMAIN,example.com" }))
+            .route("/networks", get(|| async { "IP-CIDR,10.0.0.0/8" }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+
+        let sources = format!("http://{address}/domains|http://{address}/networks");
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair("url", &sources)
+            .append_pair("behavior", "ipcidr")
+            .finish();
+        let response = router(AppState::new(Arc::new(fixture_config())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/ruleset?{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "application/octet-stream"
+        );
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let mut decoder = zstd::stream::Decoder::new(body.as_ref()).unwrap();
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).unwrap();
+        assert!(decoded.starts_with(b"MRS\x01\x01"));
+
+        server.abort();
     }
 
     #[tokio::test]

@@ -158,6 +158,20 @@ pub fn normalize_rules(
     behavior: RuleBehavior,
     max_rules: usize,
 ) -> Result<Vec<String>> {
+    let result = normalize_rules_allow_empty(content, behavior, max_rules);
+    if result.is_empty() {
+        return Err(AppError::Conversion(
+            "ruleset contains no compatible rules".into(),
+        ));
+    }
+    Ok(result)
+}
+
+pub fn normalize_rules_allow_empty(
+    content: &str,
+    behavior: RuleBehavior,
+    max_rules: usize,
+) -> Vec<String> {
     let yaml = serde_yaml::from_str::<RulePayload>(content).ok();
     let owned;
     let candidates: Box<dyn Iterator<Item = &str> + '_> = if let Some(payload) = yaml
@@ -198,12 +212,7 @@ pub fn normalize_rules(
             result.push(rule);
         }
     }
-    if result.is_empty() {
-        return Err(AppError::Conversion(
-            "ruleset contains no compatible rules".into(),
-        ));
-    }
-    Ok(result)
+    result
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -287,6 +296,13 @@ mod tests {
         let input = "DOMAIN,one.example\nDOMAIN-SUFFIX,Example.COM\nIP-CIDR,10.0.0.0/8";
         let rules = normalize_rules(input, RuleBehavior::Domain, 10).unwrap();
         assert_eq!(rules, ["one.example", "+.example.com"]);
+    }
+
+    #[test]
+    fn aggregate_normalization_allows_a_source_without_matching_rules() {
+        let input = "DOMAIN,one.example\nDOMAIN-SUFFIX,example.com";
+        assert!(normalize_rules_allow_empty(input, RuleBehavior::IpCidr, 10).is_empty());
+        assert!(normalize_rules(input, RuleBehavior::IpCidr, 10).is_err());
     }
 
     #[test]
