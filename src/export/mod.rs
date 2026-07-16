@@ -8,7 +8,10 @@ use crate::model::Proxy;
 pub use clash::{
     ClashRulesetOptions, to_clash, to_clash_full, to_clash_full_with_options, to_clash_with_base,
 };
-pub use singbox::{to_singbox, to_singbox_full, to_singbox_with_base};
+pub use singbox::{
+    SingboxExportOptions, to_singbox, to_singbox_full, to_singbox_full_with_options,
+    to_singbox_with_base,
+};
 
 fn prepare_nodes(nodes: &[Proxy], append_type: bool, sort: bool) -> Vec<Proxy> {
     let mut nodes = nodes.to_vec();

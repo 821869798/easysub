@@ -13,6 +13,23 @@ use crate::{
 
 use super::prepare_nodes;
 
+const DNS_PROXY_DETOUR_PLACEHOLDER: &str = "__DNS_PROXY_DETOUR__";
+
+#[derive(Debug, Clone, Copy)]
+pub struct SingboxExportOptions {
+    pub add_clash_modes: bool,
+    pub generate_rules: bool,
+}
+
+impl Default for SingboxExportOptions {
+    fn default() -> Self {
+        Self {
+            add_clash_modes: false,
+            generate_rules: true,
+        }
+    }
+}
+
 pub fn to_singbox(nodes: &[Proxy], append_type: bool, sort: bool) -> Result<String> {
     to_singbox_with_base(nodes, None, append_type, sort)
 }
@@ -49,6 +66,35 @@ pub fn to_singbox_full(
     ruleset_update_interval: u64,
     append_type: bool,
     sort: bool,
+) -> Result<String> {
+    to_singbox_full_with_options(
+        nodes,
+        base,
+        groups,
+        rulesets,
+        overwrite_rules,
+        max_rules,
+        ruleset_transforms,
+        ruleset_update_interval,
+        append_type,
+        sort,
+        &SingboxExportOptions::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn to_singbox_full_with_options(
+    nodes: &[Proxy],
+    base: Option<&str>,
+    groups: &[ProxyGroup],
+    rulesets: &[LoadedRuleset],
+    overwrite_rules: bool,
+    max_rules: usize,
+    ruleset_transforms: &HashMap<String, RulesetTransform>,
+    ruleset_update_interval: u64,
+    append_type: bool,
+    sort: bool,
+    options: &SingboxExportOptions,
 ) -> Result<String> {
     let mut nodes = prepare_nodes(nodes, append_type, sort);
     if nodes.iter().any(|node| node.kind == ProxyKind::Snell) {
@@ -107,6 +153,16 @@ pub fn to_singbox_full(
             Value::Object(outbound)
         }));
     }
+    if options.add_clash_modes
+        && !outbounds
+            .iter()
+            .any(|outbound| outbound.get("tag").and_then(Value::as_str) == Some("GLOBAL"))
+    {
+        let names: Vec<_> = std::iter::once("DIRECT".to_owned())
+            .chain(nodes.iter().map(|node| node.name.clone()))
+            .collect();
+        outbounds.push(json!({"type": "selector", "tag": "GLOBAL", "outbounds": names}));
+    }
     let mut config = match base {
         Some(base) => serde_json::from_str::<Value>(base).map_err(|error| {
             AppError::Conversion(format!("sing-box base JSON is invalid: {error}"))
@@ -135,6 +191,12 @@ pub fn to_singbox_full(
     if !endpoints.is_empty() {
         object.insert("endpoints".into(), Value::Array(endpoints));
     }
+    apply_dns_proxy_detour(object);
+    if !options.generate_rules {
+        return serde_json::to_string(&config).map_err(|error| {
+            AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
+        });
+    }
     let route = object
         .entry("route")
         .or_insert_with(|| json!({}))
@@ -149,6 +211,16 @@ pub fn to_singbox_full(
             .cloned()
             .unwrap_or_default()
     };
+    if options.add_clash_modes {
+        route_rules.extend([
+            json!({"action": "route", "clash_mode": "Global", "outbound": "GLOBAL"}),
+            json!({"action": "route", "clash_mode": "Direct", "outbound": "DIRECT"}),
+        ]);
+    }
+    route_rules.extend([
+        json!({"action": "sniff"}),
+        json!({"action": "hijack-dns", "protocol": "dns"}),
+    ]);
     let mut remote_rule_sets = route
         .get("rule_set")
         .and_then(Value::as_array)
@@ -243,6 +315,34 @@ pub fn to_singbox_full(
     serde_json::to_string(&config).map_err(|error| {
         AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
     })
+}
+
+fn apply_dns_proxy_detour(config: &mut Map<String, Value>) {
+    let target = config
+        .get("outbounds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|outbound| outbound.get("type").and_then(Value::as_str) == Some("selector"))
+        .and_then(|outbound| outbound.get("tag"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let Some(target) = target else { return };
+    let Some(servers) = config
+        .get_mut("dns")
+        .and_then(|dns| dns.get_mut("servers"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for server in servers {
+        let Some(server) = server.as_object_mut() else {
+            continue;
+        };
+        if server.get("detour").and_then(Value::as_str) == Some(DNS_PROXY_DETOUR_PLACEHOLDER) {
+            server.insert("detour".into(), target.clone().into());
+        }
+    }
 }
 
 fn is_singbox_rule(
@@ -516,9 +616,14 @@ fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {
         "ws" => {
             let mut headers = Map::new();
             insert_nonempty(&mut headers, "Host", &proxy.host);
+            let path = if proxy.path.is_empty() {
+                "/"
+            } else {
+                &proxy.path
+            };
             object.insert(
                 "transport".into(),
-                json!({"type": "ws", "path": proxy.path, "headers": headers}),
+                json!({"type": "ws", "path": path, "headers": headers}),
             );
         }
         "grpc" => {
@@ -646,8 +751,14 @@ mod tests {
         )
         .unwrap();
         let config: Value = serde_json::from_str(&output).unwrap();
-        assert_eq!(config["route"]["rules"][0]["rule_set"], "geoip-cn");
-        assert_eq!(config["route"]["rules"][1]["rule_set"], "geosite-openai");
+        let generated_rules: Vec<_> = config["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|rule| rule.get("rule_set").is_some())
+            .collect();
+        assert_eq!(generated_rules[0]["rule_set"], "geoip-cn");
+        assert_eq!(generated_rules[1]["rule_set"], "geosite-openai");
         let rule_sets = config["route"]["rule_set"].as_array().unwrap();
         assert!(rule_sets.iter().any(|ruleset| ruleset["tag"] == "existing"));
         let geoip = rule_sets
@@ -758,6 +869,61 @@ mod tests {
                 .iter()
                 .all(|rule| { !(rule.get("domain").is_some() && rule.get("port").is_some()) })
         );
-        assert!(rules.iter().all(|rule| rule["outbound"] == "PROXY"));
+        assert!(
+            rules
+                .iter()
+                .filter(|rule| rule.get("outbound").is_some())
+                .all(|rule| rule["outbound"] == "PROXY")
+        );
+    }
+
+    #[test]
+    fn applies_dns_detour_clash_modes_and_rule_prelude() {
+        let mut proxy = Proxy::new(ProxyKind::Trojan, "edge.example".into(), 443);
+        proxy.name = "edge".into();
+        proxy.password = "secret".into();
+        proxy.network = "ws".into();
+        proxy.tls = true;
+        let groups = [ProxyGroup {
+            name: "PROXY".into(),
+            kind: GroupKind::Select,
+            selectors: vec![".*".into()],
+            providers: Vec::new(),
+            url: String::new(),
+            interval: 0,
+            tolerance: 0,
+        }];
+        let base = r#"{
+            "dns":{"servers":[{"tag":"dns_proxy","detour":"__DNS_PROXY_DETOUR__"}]},
+            "route":{"rules":[]}
+        }"#;
+        let output = to_singbox_full_with_options(
+            &[proxy],
+            Some(base),
+            &groups,
+            &[],
+            false,
+            0,
+            &HashMap::new(),
+            0,
+            false,
+            false,
+            &SingboxExportOptions {
+                add_clash_modes: true,
+                generate_rules: true,
+            },
+        )
+        .unwrap();
+        let config: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(config["dns"]["servers"][0]["detour"], "PROXY");
+        assert_eq!(
+            config["outbounds"].as_array().unwrap().last().unwrap()["tag"],
+            "GLOBAL"
+        );
+        assert_eq!(config["outbounds"][2]["transport"]["path"], "/");
+        assert_eq!(config["route"]["rules"][0]["clash_mode"], "Global");
+        assert_eq!(config["route"]["rules"][1]["clash_mode"], "Direct");
+        assert_eq!(config["route"]["rules"][2]["action"], "sniff");
+        assert_eq!(config["route"]["rules"][3]["action"], "hijack-dns");
     }
 }

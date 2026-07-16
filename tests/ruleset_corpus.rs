@@ -107,6 +107,7 @@ fn singbox_value_count(rules: &[Value]) -> usize {
     ];
     rules
         .iter()
+        .filter(|rule| rule.get("action").and_then(Value::as_str) == Some("route"))
         .flat_map(|rule| FIELDS.iter().filter_map(|field| rule.get(*field)))
         .map(|values| values.as_array().map_or(1, Vec::len))
         .sum()

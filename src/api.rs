@@ -23,7 +23,8 @@ use crate::{
     config::AppConfig,
     error::{AppError, Result},
     export::{
-        ClashRulesetOptions, to_clash, to_clash_full_with_options, to_singbox, to_singbox_full,
+        ClashRulesetOptions, SingboxExportOptions, to_clash, to_clash_full_with_options,
+        to_singbox_full_with_options,
     },
     external::{self, ExternalConfig, LoadedRuleset},
     fetch::{FetchMetadata, Fetcher},
@@ -286,6 +287,9 @@ async fn subscription_impl(
         authorized,
     )
     .await?;
+    let enable_rule_generator = external
+        .as_ref()
+        .is_none_or(|external| external.enable_rule_generator);
     let loaded_rulesets = if external
         .as_ref()
         .is_some_and(|external| external.enable_rule_generator)
@@ -372,6 +376,10 @@ async fn subscription_impl(
             )
         }
         "singbox" | "sing-box" => {
+            let export_options = SingboxExportOptions {
+                add_clash_modes: state.config.node_pref.singbox_add_clash_modes,
+                generate_rules: enable_rule_generator,
+            };
             let base_source = external
                 .as_ref()
                 .and_then(|external| external.singbox_rule_base.as_deref())
@@ -389,7 +397,7 @@ async fn subscription_impl(
             let base = rendered_base(&state, base_source, &request_variables, true).await?;
             text_response(
                 match base.as_deref() {
-                    Some(base) => to_singbox_full(
+                    Some(base) => to_singbox_full_with_options(
                         &nodes,
                         Some(base),
                         groups,
@@ -400,8 +408,9 @@ async fn subscription_impl(
                         state.config.managed_config.ruleset_update_interval,
                         append_type,
                         sort,
+                        &export_options,
                     )?,
-                    None if external.is_some() => to_singbox_full(
+                    None if external.is_some() => to_singbox_full_with_options(
                         &nodes,
                         None,
                         groups,
@@ -412,8 +421,21 @@ async fn subscription_impl(
                         state.config.managed_config.ruleset_update_interval,
                         append_type,
                         sort,
+                        &export_options,
                     )?,
-                    None => to_singbox(&nodes, append_type, sort)?,
+                    None => to_singbox_full_with_options(
+                        &nodes,
+                        None,
+                        &[],
+                        &[],
+                        false,
+                        state.config.advance.max_allowed_rules,
+                        &state.config.node_pref.singbox_rulesets,
+                        state.config.managed_config.ruleset_update_interval,
+                        append_type,
+                        sort,
+                        &export_options,
+                    )?,
                 },
                 "application/json; charset=utf-8",
             )
@@ -987,7 +1009,9 @@ mod tests {
         assert_eq!(clash["proxy-groups"][0]["proxies"][0], "edge");
         assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
 
-        let singbox_response = router(AppState::new(Arc::new(fixture_config())).unwrap())
+        let mut singbox_config = fixture_config();
+        singbox_config.node_pref.singbox_add_clash_modes = true;
+        let singbox_response = router(AppState::new(Arc::new(singbox_config)).unwrap())
             .oneshot(
                 Request::builder()
                     .uri(format!("/sub?{}", external_query("singbox")))
@@ -1010,6 +1034,17 @@ mod tests {
         assert_eq!(selector["outbounds"][0], "edge");
         assert!(selector.get("url").is_none());
         assert!(selector.get("interval").is_none());
+        assert!(
+            singbox["outbounds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|outbound| outbound["tag"] == "GLOBAL")
+        );
+        assert_eq!(singbox["route"]["rules"][0]["clash_mode"], "Global");
+        assert_eq!(singbox["route"]["rules"][1]["clash_mode"], "Direct");
+        assert_eq!(singbox["route"]["rules"][2]["action"], "sniff");
+        assert_eq!(singbox["route"]["rules"][3]["action"], "hijack-dns");
         assert_eq!(singbox["route"]["final"], "🚀 节点选择");
     }
 

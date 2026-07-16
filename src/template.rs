@@ -79,7 +79,7 @@ fn expand_ruleset_tags(source: &str, config: &AppConfig) -> Result<String> {
             "format": "binary",
             "url": url,
             "http_client": {"detour": "DIRECT"},
-            "update_interval": format!("{}s", config.managed_config.ruleset_update_interval)
+            "update_interval": format_duration(config.managed_config.ruleset_update_interval)
         })
         .to_string()
     });
@@ -89,6 +89,18 @@ fn expand_ruleset_tags(source: &str, config: &AppConfig) -> Result<String> {
         )));
     }
     Ok(rendered.into_owned())
+}
+
+fn format_duration(seconds: u64) -> String {
+    if seconds > 0 && seconds.is_multiple_of(24 * 60 * 60) {
+        format!("{}d", seconds / (24 * 60 * 60))
+    } else if seconds > 0 && seconds.is_multiple_of(60 * 60) {
+        format!("{}h", seconds / (60 * 60))
+    } else if seconds > 0 && seconds.is_multiple_of(60) {
+        format!("{}m", seconds / 60)
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 fn insert_dotted(object: &mut Map<String, JsonValue>, key: &str, value: JsonValue) {
