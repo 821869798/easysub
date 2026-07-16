@@ -310,13 +310,8 @@ async fn subscription_impl(
         "clash" | "clashr" => {
             let optimize = query_flag(query.clash_rso.as_deref())
                 .unwrap_or(state.config.node_pref.clash_ruleset_optimize);
-            let stash_client = headers
-                .get(header::USER_AGENT)
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.contains("Stash/"));
             let optimize_to_http = query_flag(query.clash_rsoh.as_deref())
-                .unwrap_or(state.config.node_pref.clash_ruleset_optimize_to_http)
-                || stash_client;
+                .unwrap_or(state.config.node_pref.clash_ruleset_optimize_to_http);
             let geo_convert = query_flag(query.clash_gvr.as_deref())
                 .unwrap_or(state.config.node_pref.clash_geo_convert_ruleset);
             let ruleset_options = ClashRulesetOptions {
@@ -1087,33 +1082,6 @@ value = "sub?target=clash&url={node}&config={external}"
                 .iter()
                 .any(|rule| rule.as_str().unwrap_or_default().starts_with("RULE-SET,"))
         );
-
-        let detected_stash = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/p/clash/445566")
-                    .header("host", "subscriptions.example")
-                    .header("x-forwarded-proto", "https")
-                    .header("user-agent", "Stash/3.0")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(detected_stash.status(), StatusCode::OK);
-        let detected_stash = to_bytes(detected_stash.into_body(), 1024 * 1024)
-            .await
-            .unwrap();
-        let detected_stash: serde_yaml::Value = serde_yaml::from_slice(&detected_stash).unwrap();
-        for provider in detected_stash["rule-providers"]
-            .as_mapping()
-            .unwrap()
-            .values()
-        {
-            assert_eq!(provider["type"], "http");
-            assert!(provider.get("payload").is_none());
-        }
 
         let provider_url = providers
             .values()

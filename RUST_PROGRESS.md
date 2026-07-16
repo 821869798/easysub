@@ -76,7 +76,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and OR-preserving field buckets |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
-| EXP-08 | [x] | Clash rule-provider optimization | `clashRSO`, `clashRSOH` and `clashGVR` support inline providers, HTTP MRS providers and GEOIP/GEOSITE conversion; Stash is forced to HTTP/MRS |
+| EXP-08 | [x] | Clash rule-provider optimization | `clashRSO`, `clashRSOH` and `clashGVR` support inline providers, HTTP MRS providers and GEOIP/GEOSITE conversion; Stash rewrites explicitly enable `clashRSOH` |
 
 ## External configuration and rulesets
 
