@@ -33,7 +33,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | HTTP-04 | [x] | `GET /ruleset` MRS response | Unit and compatibility fixtures |
 | HTTP-05 | [x] | `GET /p/*path` private subscriptions | Real `private_sub.toml` smoke test |
 | HTTP-06 | [x] | API-mode token and local-source authorization boundary | Default/local sources require token; explicit nodes and trusted private rewrites tested |
-| HTTP-07 | [-] | Query flags | `append_type` and `sort` done; insert/scv/fdn/udp/tfo/ruleset flags remain |
+| HTTP-07 | [x] | Core query flags | insert/append_type/sort/scv/fdn/udp/tfo support true/false overrides; optional rule-provider flags track EXP-08 |
 | HTTP-08 | [ ] | Response metadata parity | Subscription user-info and managed headers |
 
 ## Resource and concurrency model
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 36 tests including golden and property suites |
+| TEST-01 | [x] | Rust unit/integration suite | 39 tests including golden, property and query-compatibility suites |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

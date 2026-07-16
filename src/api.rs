@@ -112,8 +112,13 @@ async fn private_subscription(
         url: fields.remove("url"),
         config: fields.remove("config"),
         token: fields.remove("token"),
-        append_type: take_bool(&mut fields, "append_type"),
-        sort: take_bool(&mut fields, "sort"),
+        insert: fields.remove("insert"),
+        append_type: fields.remove("append_type"),
+        sort: fields.remove("sort"),
+        scv: fields.remove("scv"),
+        fdn: fields.remove("fdn"),
+        udp: fields.remove("udp"),
+        tfo: fields.remove("tfo"),
     };
     subscription_impl(
         State(state),
@@ -124,22 +129,19 @@ async fn private_subscription(
     .await
 }
 
-fn take_bool(fields: &mut std::collections::HashMap<String, String>, key: &str) -> bool {
-    fields
-        .remove(key)
-        .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-}
-
 #[derive(Debug, Deserialize)]
 struct SubscriptionQuery {
     target: String,
     url: Option<String>,
     config: Option<String>,
     token: Option<String>,
-    #[serde(default)]
-    append_type: bool,
-    #[serde(default)]
-    sort: bool,
+    insert: Option<String>,
+    append_type: Option<String>,
+    sort: Option<String>,
+    scv: Option<String>,
+    fdn: Option<String>,
+    udp: Option<String>,
+    tfo: Option<String>,
 }
 
 async fn subscription(
@@ -163,8 +165,18 @@ async fn subscription_impl(
             "token is required to use default subscription sources".into(),
         ));
     }
-    let sources = sources_or_default(query.url.as_deref(), &state.config)?;
+    let mut sources = sources_or_default(query.url.as_deref(), &state.config)?;
     reject_sensitive_sources(&sources, authorized, "subscription")?;
+    let insert = query_flag(query.insert.as_deref()).unwrap_or(state.config.common.enable_insert);
+    if insert && !state.config.common.insert_url.is_empty() {
+        if state.config.common.prepend_insert_url {
+            let mut combined = state.config.common.insert_url.clone();
+            combined.extend(sources);
+            sources = combined;
+        } else {
+            sources.extend(state.config.common.insert_url.iter().cloned());
+        }
+    }
     enforce_source_limit(&sources, &state.config)?;
     let concurrency = state
         .config
@@ -203,17 +215,42 @@ async fn subscription_impl(
         .try_collect()
         .await?;
     loaded.sort_by_key(|(index, _)| *index);
-    let nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes)| nodes).collect();
+    let mut nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes)| nodes).collect();
     if nodes.is_empty() {
         return Err(AppError::BadRequest(
             "all subscription sources failed or contained no supported nodes".into(),
         ));
     }
 
-    let append_type = query.append_type
-        || state.config.common.append_proxy_type
-        || state.config.node_pref.append_proxy_type;
-    let sort = query.sort || state.config.node_pref.sort_flag;
+    let udp = query_flag(query.udp.as_deref()).or(state.config.node_pref.udp_flag);
+    let tfo = query_flag(query.tfo.as_deref()).or(state.config.node_pref.tcp_fast_open_flag);
+    let skip_cert_verify =
+        query_flag(query.scv.as_deref()).or(state.config.node_pref.skip_cert_verify_flag);
+    for node in &mut nodes {
+        if let Some(value) = udp {
+            node.udp = Some(value);
+        }
+        if let Some(value) = tfo {
+            node.tcp_fast_open = Some(value);
+        }
+        if let Some(value) = skip_cert_verify {
+            node.skip_cert_verify = Some(value);
+        }
+    }
+    if query_flag(query.fdn.as_deref()).unwrap_or(state.config.node_pref.filter_deprecated_nodes) {
+        nodes.retain(|node| {
+            node.kind != crate::model::ProxyKind::Shadowsocks || node.method != "chacha20"
+        });
+    }
+    if nodes.is_empty() {
+        return Err(AppError::BadRequest(
+            "all subscription nodes were filtered".into(),
+        ));
+    }
+    let append_type = query_flag(query.append_type.as_deref()).unwrap_or(
+        state.config.common.append_proxy_type || state.config.node_pref.append_proxy_type,
+    );
+    let sort = query_flag(query.sort.as_deref()).unwrap_or(state.config.node_pref.sort_flag);
     let request_variables = query_variables(raw_query.as_deref());
     let external = load_external_config(
         &state,
@@ -443,6 +480,14 @@ fn split_sources(value: &str) -> Vec<String> {
 
 fn request_is_authorized(config: &AppConfig, token: Option<&str>) -> bool {
     !config.common.api_mode || token.is_some_and(|token| token == config.common.api_access_token)
+}
+
+fn query_flag(value: Option<&str>) -> Option<bool> {
+    match value?.to_ascii_lowercase().as_str() {
+        "1" | "t" | "true" | "y" | "yes" | "on" => Some(true),
+        "0" | "f" | "false" | "n" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 fn is_sensitive_source(source: &str) -> bool {
@@ -848,6 +893,89 @@ value = "sub?target=clash&url={node}&config={external}"
             .await
             .unwrap();
         assert_eq!(local_ruleset.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn query_flags_override_node_and_output_defaults() {
+        let mut config = fixture_config();
+        config.common.append_proxy_type = true;
+        config.node_pref.sort_flag = true;
+        config.node_pref.udp_flag = Some(true);
+        config.node_pref.tcp_fast_open_flag = Some(false);
+        config.node_pref.skip_cert_verify_flag = Some(false);
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", "clash")
+            .append_pair(
+                "url",
+                "trojan://secret@z.example:443#z|ss://Y2hhY2hhMjA6cGFzcw@deprecated.example:443#deprecated|trojan://secret@a.example:443#a",
+            )
+            .append_pair("append_type", "false")
+            .append_pair("sort", "0")
+            .append_pair("udp", "false")
+            .append_pair("tfo", "1")
+            .append_pair("scv", "true")
+            .append_pair("fdn", "true")
+            .finish();
+        let response = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"][0]["name"], "z");
+        assert_eq!(clash["proxies"][1]["name"], "a");
+        assert_eq!(clash["proxies"].as_sequence().unwrap().len(), 2);
+        assert_eq!(clash["proxies"][0]["udp"], false);
+        assert_eq!(clash["proxies"][0]["tfo"], true);
+        assert_eq!(clash["proxies"][0]["skip-cert-verify"], true);
+    }
+
+    #[tokio::test]
+    async fn configured_insert_sources_can_be_disabled_per_request() {
+        let mut config = fixture_config();
+        config.common.insert_url = vec!["trojan://secret@insert.example:443#insert".into()];
+        config.common.enable_insert = true;
+        config.common.prepend_insert_url = true;
+        let query = |insert: &str| {
+            url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("target", "clash")
+                .append_pair("url", "trojan://secret@main.example:443#main")
+                .append_pair("insert", insert)
+                .finish()
+        };
+        let enabled = router(AppState::new(Arc::new(config.clone())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}", query("true")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(enabled.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"][0]["name"], "insert");
+        assert_eq!(clash["proxies"][1]["name"], "main");
+
+        let disabled = router(AppState::new(Arc::new(config)).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}", query("false")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(disabled.into_body(), 1024 * 1024).await.unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
+        assert_eq!(clash["proxies"].as_sequence().unwrap().len(), 1);
+        assert_eq!(clash["proxies"][0]["name"], "main");
     }
 
     #[tokio::test]

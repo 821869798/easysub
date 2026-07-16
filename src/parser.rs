@@ -67,13 +67,8 @@ pub fn parse_subscription(content: &str, first_group_id: u32) -> Result<Vec<Prox
     };
 
     let mut nodes = Vec::new();
-    for (index, line) in text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .enumerate()
-    {
-        if let Ok(node) = parse_node(line, first_group_id.saturating_add(index as u32)) {
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Ok(node) = parse_node(line, first_group_id) {
             nodes.push(node);
         }
     }
@@ -728,5 +723,16 @@ mod tests {
         assert_eq!(proxy.method, "aes-128-gcm");
         assert_eq!(proxy.password, "pass");
         assert_eq!(proxy.name, "node");
+    }
+
+    #[test]
+    fn subscription_nodes_share_the_source_group_id() {
+        let nodes = parse_subscription(
+            "trojan://one@one.example:443#one\ntrojan://two@two.example:443#two",
+            7,
+        )
+        .unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes.iter().all(|node| node.group_id == 7));
     }
 }
