@@ -12,7 +12,7 @@ use serde_json::Value;
 #[tokio::test]
 async fn matches_go_singbox_golden_semantics() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let config = AppConfig::load(root.join("workdir/pref.toml"))
+    let config = AppConfig::load(root.join("workdir/pref.example.toml"))
         .await
         .unwrap();
     let request = HashMap::from([
@@ -118,7 +118,7 @@ async fn matches_go_singbox_golden_semantics() {
 #[tokio::test]
 async fn matches_go_clash_golden_semantics() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let config = AppConfig::load(root.join("workdir/pref.toml"))
+    let config = AppConfig::load(root.join("workdir/pref.example.toml"))
         .await
         .unwrap();
     let request = HashMap::from([

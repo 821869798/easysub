@@ -19,7 +19,7 @@ func main() {
 		slog.Error("enter workdir error: " + err.Error())
 		return
 	}
-	config.LoadConfig("pref.toml")
+	config.LoadConfig("pref.example.toml")
 
 	// Create test proxies for all optimized protocols
 	proxies := []*define.Proxy{
