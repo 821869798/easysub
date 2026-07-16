@@ -22,7 +22,8 @@ use tower_http::{
 use crate::{
     config::AppConfig,
     error::{AppError, Result},
-    export::{to_clash, to_clash_with_base, to_singbox, to_singbox_with_base},
+    export::{to_clash, to_clash_full, to_singbox, to_singbox_full},
+    external::{self, ExternalConfig, LoadedRuleset},
     fetch::Fetcher,
     model::{Proxy, RuleBehavior},
     mrs,
@@ -79,6 +80,7 @@ async fn health() -> StatusCode {
 struct SubscriptionQuery {
     target: String,
     url: Option<String>,
+    config: Option<String>,
     #[serde(default)]
     append_type: bool,
     #[serde(default)]
@@ -124,34 +126,85 @@ async fn subscription(
         || state.config.node_pref.append_proxy_type;
     let sort = query.sort || state.config.node_pref.sort_flag;
     let request_variables = query_variables(raw_query.as_deref());
+    let external =
+        load_external_config(&state, query.config.as_deref(), &request_variables).await?;
+    let loaded_rulesets = if external
+        .as_ref()
+        .is_some_and(|external| external.enable_rule_generator)
+    {
+        load_rulesets(&state, &external.as_ref().expect("checked above").rulesets).await?
+    } else {
+        Vec::new()
+    };
+    let groups = external
+        .as_ref()
+        .map(|external| external.groups.as_slice())
+        .unwrap_or_default();
+    let overwrite_rules = external
+        .as_ref()
+        .is_some_and(|external| external.overwrite_original_rules);
     match query.target.to_ascii_lowercase().as_str() {
         "clash" | "clashr" => {
-            let base = rendered_base(
-                &state,
-                &state.config.common.clash_rule_base,
-                &request_variables,
-                false,
-            )
-            .await?;
+            let base_source = external
+                .as_ref()
+                .and_then(|external| external.clash_rule_base.as_deref())
+                .unwrap_or(&state.config.common.clash_rule_base);
+            let base = rendered_base(&state, base_source, &request_variables, false).await?;
             text_response(
                 match base.as_deref() {
-                    Some(base) => to_clash_with_base(&nodes, Some(base), append_type, sort)?,
+                    Some(base) => to_clash_full(
+                        &nodes,
+                        Some(base),
+                        groups,
+                        &loaded_rulesets,
+                        overwrite_rules,
+                        state.config.advance.max_allowed_rules,
+                        append_type,
+                        sort,
+                    )?,
+                    None if external.is_some() => to_clash_full(
+                        &nodes,
+                        None,
+                        groups,
+                        &loaded_rulesets,
+                        overwrite_rules,
+                        state.config.advance.max_allowed_rules,
+                        append_type,
+                        sort,
+                    )?,
                     None => to_clash(&nodes, append_type, sort)?,
                 },
                 "text/yaml; charset=utf-8",
             )
         }
         "singbox" | "sing-box" => {
-            let base = rendered_base(
-                &state,
-                &state.config.common.singbox_rule_base,
-                &request_variables,
-                true,
-            )
-            .await?;
+            let base_source = external
+                .as_ref()
+                .and_then(|external| external.singbox_rule_base.as_deref())
+                .unwrap_or(&state.config.common.singbox_rule_base);
+            let base = rendered_base(&state, base_source, &request_variables, true).await?;
             text_response(
                 match base.as_deref() {
-                    Some(base) => to_singbox_with_base(&nodes, Some(base), append_type, sort)?,
+                    Some(base) => to_singbox_full(
+                        &nodes,
+                        Some(base),
+                        groups,
+                        &loaded_rulesets,
+                        overwrite_rules,
+                        state.config.advance.max_allowed_rules,
+                        append_type,
+                        sort,
+                    )?,
+                    None if external.is_some() => to_singbox_full(
+                        &nodes,
+                        None,
+                        groups,
+                        &loaded_rulesets,
+                        overwrite_rules,
+                        state.config.advance.max_allowed_rules,
+                        append_type,
+                        sort,
+                    )?,
                     None => to_singbox(&nodes, append_type, sort)?,
                 },
                 "application/json; charset=utf-8",
@@ -299,6 +352,80 @@ async fn rendered_base(
     template::render(text, request, &state.config, singbox).map(Some)
 }
 
+async fn load_external_config(
+    state: &AppState,
+    requested: Option<&str>,
+    request: &std::collections::HashMap<String, String>,
+) -> Result<Option<ExternalConfig>> {
+    let source = requested.filter(|source| !source.is_empty()).or_else(|| {
+        (!state.config.common.default_external_config.is_empty())
+            .then_some(state.config.common.default_external_config.as_str())
+    });
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    let source = state.config.resolve_source(source);
+    let bytes = state
+        .fetcher
+        .get(
+            &source,
+            Duration::from_secs(state.config.advance.cache_config),
+            true,
+        )
+        .await?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| AppError::BadRequest("external config is not UTF-8".into()))?;
+    let rendered = template::render(text, request, &state.config, false)?;
+    external::parse(&rendered).map(Some)
+}
+
+async fn load_rulesets(
+    state: &AppState,
+    specs: &[external::RulesetSpec],
+) -> Result<Vec<LoadedRuleset>> {
+    if specs.len() > state.config.advance.max_allowed_rulesets {
+        return Err(AppError::Limit(format!(
+            "ruleset count {} exceeds limit {}",
+            specs.len(),
+            state.config.advance.max_allowed_rulesets
+        )));
+    }
+    let concurrency = state
+        .config
+        .advance
+        .fetch_concurrency
+        .min(specs.len())
+        .max(1);
+    let ttl = Duration::from_secs(state.config.advance.cache_ruleset);
+    let mut loaded: Vec<(usize, LoadedRuleset)> = stream::iter(specs.iter().cloned().enumerate())
+        .map(|(index, spec)| {
+            let state = state.clone();
+            async move {
+                let content = if spec.inline {
+                    spec.source.clone()
+                } else {
+                    let bytes = state.fetcher.get(&spec.source, ttl, false).await?;
+                    std::str::from_utf8(&bytes)
+                        .map_err(|_| AppError::BadRequest("ruleset is not UTF-8".into()))?
+                        .to_owned()
+                };
+                Ok::<_, AppError>((
+                    index,
+                    LoadedRuleset {
+                        group: spec.group,
+                        content,
+                        format: spec.format,
+                    },
+                ))
+            }
+        })
+        .buffer_unordered(concurrency)
+        .try_collect()
+        .await?;
+    loaded.sort_by_key(|(index, _)| *index);
+    Ok(loaded.into_iter().map(|(_, ruleset)| ruleset).collect())
+}
+
 fn query_variables(raw_query: Option<&str>) -> std::collections::HashMap<String, String> {
     raw_query
         .map(|raw| {
@@ -319,7 +446,10 @@ fn text_response(body: String, content_type: &'static str) -> Result<Response> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use axum::{body::to_bytes, http::Request};
+    use serde_json::Value;
     use tower::ServiceExt;
 
     use super::*;
@@ -360,5 +490,72 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    fn fixture_config() -> AppConfig {
+        let mut config = AppConfig {
+            base_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("workdir"),
+            ..AppConfig::default()
+        };
+        config.common.clash_rule_base.clear();
+        config.common.singbox_rule_base.clear();
+        config
+    }
+
+    fn external_query(target: &str) -> String {
+        url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("target", target)
+            .append_pair(
+                "url",
+                "trojan://secret@example.com:443?sni=edge.example.com#edge",
+            )
+            .append_pair("config", "file:///ACL4SSR_NoRule.ini")
+            .finish()
+    }
+
+    #[tokio::test]
+    async fn applies_file_shared_external_config_to_clash_and_singbox() {
+        let clash_response = router(AppState::new(Arc::new(fixture_config())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}", external_query("clash")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(clash_response.status(), StatusCode::OK);
+        let clash_body = to_bytes(clash_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let clash: serde_yaml::Value = serde_yaml::from_slice(&clash_body).unwrap();
+        assert_eq!(clash["proxy-groups"][0]["name"], "🚀 节点选择");
+        assert_eq!(clash["proxy-groups"][0]["proxies"][0], "edge");
+        assert_eq!(clash["rules"][0], "MATCH,🚀 节点选择");
+
+        let singbox_response = router(AppState::new(Arc::new(fixture_config())).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/sub?{}", external_query("singbox")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(singbox_response.status(), StatusCode::OK);
+        let singbox_body = to_bytes(singbox_response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let singbox: Value = serde_json::from_slice(&singbox_body).unwrap();
+        let selector = singbox["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|outbound| outbound["tag"] == "🚀 节点选择")
+            .unwrap();
+        assert_eq!(selector["outbounds"][0], "edge");
+        assert!(selector.get("url").is_none());
+        assert!(selector.get("interval").is_none());
+        assert_eq!(singbox["route"]["final"], "🚀 节点选择");
     }
 }

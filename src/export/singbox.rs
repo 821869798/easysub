@@ -2,7 +2,10 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     error::{AppError, Result},
+    external::{GroupKind, LoadedRuleset, ProxyGroup},
+    group,
     model::{Proxy, ProxyKind},
+    rules::parse_common_rules,
 };
 
 use super::prepare_nodes;
@@ -17,18 +20,69 @@ pub fn to_singbox_with_base(
     append_type: bool,
     sort: bool,
 ) -> Result<String> {
+    to_singbox_full(nodes, base, &[], &[], false, 0, append_type, sort)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn to_singbox_full(
+    nodes: &[Proxy],
+    base: Option<&str>,
+    groups: &[ProxyGroup],
+    rulesets: &[LoadedRuleset],
+    overwrite_rules: bool,
+    max_rules: usize,
+    append_type: bool,
+    sort: bool,
+) -> Result<String> {
     let nodes = prepare_nodes(nodes, append_type, sort);
     let mut outbounds = vec![
         json!({"type": "direct", "tag": "DIRECT"}),
         json!({"type": "block", "tag": "REJECT"}),
     ];
     outbounds.extend(nodes.iter().map(proxy_value));
-    let names: Vec<_> = nodes
-        .iter()
-        .map(|node| node.name.clone())
-        .chain(["DIRECT".into()])
-        .collect();
-    outbounds.push(json!({"type": "selector", "tag": "GLOBAL", "outbounds": names}));
+    if groups.is_empty() {
+        let names: Vec<_> = nodes
+            .iter()
+            .map(|node| node.name.clone())
+            .chain(["DIRECT".into()])
+            .collect();
+        outbounds.push(json!({"type": "selector", "tag": "GLOBAL", "outbounds": names}));
+    } else {
+        outbounds.extend(groups.iter().map(|group_config| {
+            let mut outbound = Map::new();
+            outbound.insert(
+                "type".into(),
+                match group_config.kind {
+                    GroupKind::Select | GroupKind::Relay => "selector",
+                    GroupKind::UrlTest | GroupKind::Fallback | GroupKind::LoadBalance => "urltest",
+                }
+                .into(),
+            );
+            outbound.insert("tag".into(), group_config.name.clone().into());
+            outbound.insert(
+                "outbounds".into(),
+                json!(group::members(group_config, &nodes)),
+            );
+            if matches!(
+                group_config.kind,
+                GroupKind::UrlTest | GroupKind::Fallback | GroupKind::LoadBalance
+            ) {
+                if !group_config.url.is_empty() {
+                    outbound.insert("url".into(), group_config.url.clone().into());
+                }
+                outbound.insert(
+                    "interval".into(),
+                    if group_config.interval > 0 {
+                        format!("{}s", group_config.interval)
+                    } else {
+                        "5m".into()
+                    }
+                    .into(),
+                );
+            }
+            Value::Object(outbound)
+        }));
+    }
     let mut config = match base {
         Some(base) => serde_json::from_str::<Value>(base).map_err(|error| {
             AppError::Conversion(format!("sing-box base JSON is invalid: {error}"))
@@ -48,8 +102,75 @@ pub fn to_singbox_with_base(
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .ok_or_else(|| AppError::Conversion("sing-box route must be an object".into()))?;
-    route.entry("rules").or_insert_with(|| json!([]));
-    route.entry("final").or_insert_with(|| "GLOBAL".into());
+    let mut route_rules = if overwrite_rules {
+        Vec::new()
+    } else {
+        route
+            .get("rules")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let mut generated = 0usize;
+    let mut final_outbound = None;
+    for ruleset in rulesets {
+        if max_rules > 0 && generated >= max_rules {
+            break;
+        }
+        let remaining = if max_rules == 0 {
+            0
+        } else {
+            max_rules - generated
+        };
+        let mut rule_object = Map::new();
+        for rule in parse_common_rules(&ruleset.content, ruleset.format, remaining) {
+            if matches!(rule.kind.as_str(), "FINAL" | "MATCH") {
+                final_outbound = Some(ruleset.group.clone());
+                continue;
+            }
+            let Some(value) = rule.value else { continue };
+            let field = match rule.kind.as_str() {
+                "DOMAIN" => "domain",
+                "DOMAIN-SUFFIX" => "domain_suffix",
+                "DOMAIN-KEYWORD" => "domain_keyword",
+                "IP-CIDR" | "IP-CIDR6" => "ip_cidr",
+                "SRC-IP-CIDR" => "source_ip_cidr",
+                "PROCESS-NAME" => "process_name",
+                "SRC-PORT" => "source_port",
+                "DST-PORT" => "port",
+                "NETWORK" => "network",
+                "PROTOCOL" => "protocol",
+                _ => continue,
+            };
+            rule_object
+                .entry(field)
+                .or_insert_with(|| Value::Array(Vec::new()))
+                .as_array_mut()
+                .expect("sing-box rule field is always an array")
+                .push(Value::String(value.to_ascii_lowercase()));
+            generated += 1;
+            if max_rules > 0 && generated >= max_rules {
+                break;
+            }
+        }
+        if !rule_object.is_empty() {
+            rule_object.insert("action".into(), "route".into());
+            rule_object.insert("outbound".into(), ruleset.group.clone().into());
+            route_rules.push(Value::Object(rule_object));
+        }
+    }
+    route.insert("rules".into(), Value::Array(route_rules));
+    route.insert(
+        "final".into(),
+        final_outbound
+            .unwrap_or_else(|| {
+                groups
+                    .first()
+                    .map_or("GLOBAL", |group| group.name.as_str())
+                    .to_owned()
+            })
+            .into(),
+    );
     serde_json::to_string(&config).map_err(|error| {
         AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
     })

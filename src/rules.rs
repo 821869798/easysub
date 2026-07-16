@@ -3,8 +3,122 @@ use serde::Deserialize;
 
 use crate::{
     error::{AppError, Result},
+    external::RulesetFormat,
     model::RuleBehavior,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleLine {
+    pub kind: String,
+    pub value: Option<String>,
+    pub no_resolve: bool,
+}
+
+pub fn parse_common_rules(content: &str, format: RulesetFormat, limit: usize) -> Vec<RuleLine> {
+    if let Some(inline) = content.strip_prefix("[]") {
+        return parse_common_line(inline, RulesetFormat::Surge)
+            .into_iter()
+            .collect();
+    }
+    let payload = serde_yaml::from_str::<RulePayload>(content).ok();
+    let yaml_values = payload
+        .as_ref()
+        .filter(|payload| !payload.payload.is_empty() || !payload.rules.is_empty());
+    let lines: Box<dyn Iterator<Item = &str> + '_> = match yaml_values {
+        Some(payload) => Box::new(
+            payload
+                .payload
+                .iter()
+                .chain(&payload.rules)
+                .map(String::as_str),
+        ),
+        None => Box::new(content.lines()),
+    };
+    lines
+        .filter_map(|line| {
+            let line = line
+                .split_once("//")
+                .map_or(line, |(rule, _)| rule)
+                .trim()
+                .trim_matches(['\'', '"']);
+            if line.is_empty() || line.starts_with(['#', ';']) || line.starts_with("//") {
+                None
+            } else {
+                parse_common_line(line, format)
+            }
+        })
+        .take(if limit == 0 { usize::MAX } else { limit })
+        .collect()
+}
+
+fn parse_common_line(line: &str, format: RulesetFormat) -> Option<RuleLine> {
+    match format {
+        RulesetFormat::ClashDomain => {
+            let value = line.trim_start_matches("+.").trim_start_matches('.');
+            if value.is_empty() {
+                return None;
+            }
+            Some(RuleLine {
+                kind: if line.starts_with("+.") || line.starts_with('.') {
+                    "DOMAIN-SUFFIX".into()
+                } else {
+                    "DOMAIN".into()
+                },
+                value: Some(value.to_owned()),
+                no_resolve: false,
+            })
+        }
+        RulesetFormat::ClashIpCidr => line.parse::<IpNet>().ok().map(|network| RuleLine {
+            kind: if network.addr().is_ipv6() {
+                "IP-CIDR6"
+            } else {
+                "IP-CIDR"
+            }
+            .into(),
+            value: Some(line.to_owned()),
+            no_resolve: true,
+        }),
+        _ => {
+            let mut parts = line.split(',').map(str::trim);
+            let mut kind = parts.next()?.to_ascii_uppercase();
+            if format == RulesetFormat::QuanX {
+                kind = match kind.as_str() {
+                    "HOST" => "DOMAIN".into(),
+                    "HOST-SUFFIX" => "DOMAIN-SUFFIX".into(),
+                    "HOST-KEYWORD" => "DOMAIN-KEYWORD".into(),
+                    "IP6-CIDR" => "IP-CIDR6".into(),
+                    _ => kind,
+                };
+            }
+            let value = parts
+                .next()
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+            let no_resolve = parts.any(|part| part.eq_ignore_ascii_case("no-resolve"));
+            let supported = [
+                "DOMAIN",
+                "DOMAIN-SUFFIX",
+                "DOMAIN-KEYWORD",
+                "IP-CIDR",
+                "IP-CIDR6",
+                "SRC-IP-CIDR",
+                "GEOIP",
+                "MATCH",
+                "FINAL",
+                "PROCESS-NAME",
+                "SRC-PORT",
+                "DST-PORT",
+                "NETWORK",
+                "PROTOCOL",
+            ];
+            supported.contains(&kind.as_str()).then_some(RuleLine {
+                kind,
+                value,
+                no_resolve,
+            })
+        }
+    }
+}
 
 #[derive(Debug, Default, Deserialize)]
 struct RulePayload {

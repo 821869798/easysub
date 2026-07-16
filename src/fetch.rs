@@ -48,7 +48,7 @@ impl Fetcher {
             client,
             cache,
             max_bytes,
-            file_share_root: PathBuf::from(&config.advance.file_share_path),
+            file_share_root: PathBuf::from(config.resolve_source(&config.advance.file_share_path)),
             enable_file_share: config.advance.enable_file_share,
         })
     }
