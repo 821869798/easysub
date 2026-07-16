@@ -391,9 +391,16 @@ fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {
             );
         }
         "http" | "h2" => {
+            let mut headers = Map::new();
+            insert_nonempty(&mut headers, "Host", &proxy.host);
             object.insert(
                 "transport".into(),
-                json!({"type": "http", "host": [proxy.host], "path": proxy.path}),
+                json!({
+                    "type": "http",
+                    "host": [proxy.host],
+                    "path": proxy.path,
+                    "headers": headers
+                }),
             );
         }
         _ => {}
@@ -412,6 +419,8 @@ fn add_tls(object: &mut Map<String, Value>, proxy: &Proxy) {
     }
     if !proxy.alpn.is_empty() {
         tls.insert("alpn".into(), json!(proxy.alpn));
+    } else if proxy.kind == ProxyKind::Trojan {
+        tls.insert("alpn".into(), json!(["h2", "http/1.1"]));
     }
     if !proxy.fingerprint.is_empty() {
         tls.insert(

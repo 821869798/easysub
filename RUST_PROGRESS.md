@@ -104,9 +104,9 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 32 tests after URL protocol field parity |
+| TEST-01 | [x] | Rust unit/integration suite | 33 tests including the first Go semantic golden case |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
-| TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
+| TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
 | TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |
 | TEST-05 | [-] | Performance baseline | Full ACL: 0.525 s cold; 16 requests: 0.484 s wall on current machine |
 | TEST-06 | [x] | Release binary-size baseline | 7.63 MiB on Windows x86-64 |
