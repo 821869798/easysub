@@ -20,6 +20,8 @@ WORKDIR /app
 COPY --from=builder /build/target/release/easysub-rs /app/easysub-rs
 COPY workdir /app/workdir
 RUN cp /app/workdir/pref.example.toml /app/workdir/pref.toml \
+    && sed -i '/key = "clash.log_level"/{N;s/value = "info"/value = "warning"/}' /app/workdir/pref.toml \
+    && sed -i '/key = "singbox.log_level"/{N;s/value = "info"/value = "warn"/}' /app/workdir/pref.toml \
     && chown -R easysub:easysub /app
 
 USER easysub
