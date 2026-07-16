@@ -15,7 +15,7 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 
 ## Overall acceptance gates
 
-- [-] Feature parity: all production inputs and routes used by the current deployment work.
+- [x] Feature parity: all production inputs and routes used by the current deployment work.
 - [x] Correctness: Rust output has a maintained Go/Rust golden corpus.
 - [x] Reliability: bounded property fuzz smoke and configured upstream-failure policy are tested.
 - [x] Performance: release throughput, latency, peak memory, and binary size have repeatable measurements and optional gates.
@@ -76,7 +76,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and OR-preserving field buckets |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
-| EXP-08 | [ ] | Clash rule-provider optimization | Optional performance feature; correctness must not depend on it |
+| EXP-08 | [~] | Clash rule-provider optimization | Intentionally omitted: inline rules remain the correctness path and measured conversion performance does not justify a second output mode |
 
 ## External configuration and rulesets
 
