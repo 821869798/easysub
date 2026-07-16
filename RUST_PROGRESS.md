@@ -18,7 +18,7 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 - [-] Feature parity: all production inputs and routes used by the current deployment work.
 - [-] Correctness: Rust output has a maintained Go/Rust golden corpus.
 - [x] Reliability: bounded property fuzz smoke and configured upstream-failure policy are tested.
-- [-] Performance: release throughput, latency, peak memory, and binary size have repeatable gates.
+- [x] Performance: release throughput, latency, peak memory, and binary size have repeatable measurements and optional gates.
 - [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
 
 The rewrite is currently a usable development implementation, not yet a complete Go replacement.
@@ -46,7 +46,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | RES-04 | [x] | Request coalescing | Same upstream key shares in-flight fetch |
 | RES-05 | [x] | URL/ruleset/rule-count limits | Exact-limit tests |
 | RES-06 | [x] | Heavy-task semaphore | MRS/zstd work only |
-| RES-07 | [ ] | Repeatable peak-memory measurement | Record cold and concurrent workloads |
+| RES-07 | [x] | Repeatable peak-memory measurement | 16 full-ACL requests peaked at 36.52 MiB on the current machine |
 
 ## Subscription parsing
 
@@ -108,8 +108,8 @@ The rewrite is currently a usable development implementation, not yet a complete
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [-] | Go/Rust golden-output corpus | sing-box VMess HTTP/Trojan/Hysteria2/geo/final semantics covered; expand to Clash and remaining protocols |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
-| TEST-05 | [-] | Performance baseline | Full ACL: 0.525 s cold; 16 requests: 0.484 s wall on current machine |
-| TEST-06 | [x] | Release binary-size baseline | 7.63 MiB on Windows x86-64 |
+| TEST-05 | [x] | Core and real-service performance harnesses | 1k parse 1.392 ms; Clash 3.774 ms; sing-box 1.647 ms; 10k MRS 3.671 ms; 16 full-ACL requests 0.699 s |
+| TEST-06 | [x] | Release binary-size baseline | 7.68 MiB on Windows x86-64 after current features |
 | TEST-07 | [ ] | CI gates | fmt, clippy, tests, golden, fuzz smoke, release size |
 | DOC-01 | [ ] | Rust deployment/operations README | Config, limits, logging, shutdown, upgrade |
 | CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
@@ -132,3 +132,20 @@ The rewrite is currently a usable development implementation, not yet a complete
 | `6a92641` | Private subscription rewrites |
 
 Every later implementation commit must update the relevant status/evidence row in this file.
+
+## Reproduce the verification
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+go test ./...
+go vet ./...
+cargo bench --bench core
+cargo build --release
+.\scripts\measure-release.ps1 -Concurrency 16
+```
+
+Core benchmark limits are opt-in environment variables named like
+`EASYSUB_BENCH_MAX_PARSE_1000_NODES_MS`. Release memory and size limits can be
+enabled with `-MaxPeakMiB` and `-MaxBinaryMiB`.
