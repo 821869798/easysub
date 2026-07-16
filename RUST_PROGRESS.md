@@ -54,11 +54,11 @@ The rewrite is currently a usable development implementation, not yet a complete
 |---|---|---|---|
 | PARSE-01 | [x] | SIP002 Shadowsocks | Base64 and plugin fields |
 | PARSE-02 | [x] | VMess / VMess1 | JSON, standard URL, Kitsunebi, Quan and Shadowrocket fixtures |
-| PARSE-03 | [-] | VLESS | Common URL fields done; transport edge cases need golden tests |
-| PARSE-04 | [-] | Trojan | Common URL fields done; transport aliases need golden tests |
-| PARSE-05 | [-] | TUIC | Core fields done; remaining timing/stream fields |
+| PARSE-03 | [x] | VLESS / VLESS1 | TCP/WS/H2/gRPC, TLS/Reality and fingerprint fields tested |
+| PARSE-04 | [x] | Trojan | Common URL and websocket aliases tested |
+| PARSE-05 | [x] | TUIC | Authentication, timing, relay, congestion and stream fields tested |
 | PARSE-06 | [x] | AnyTLS | Core and session fields tested |
-| PARSE-07 | [-] | Hysteria2 | Core fields done; port hopping/CA/CWND fields remain |
+| PARSE-07 | [x] | Hysteria2 | Authentication, obfs, bandwidth, port hopping, CA and CWND fields tested |
 | PARSE-08 | [x] | HTTP/HTTPS/SOCKS5 URL nodes | Basic authentication supported |
 | PARSE-09 | [ ] | Telegram SOCKS/HTTP links | Go-compatible fixtures required |
 | PARSE-10 | [ ] | Netch links | Decide production need, then implement or document exclusion |
@@ -104,7 +104,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 27 tests after PARSE-02 implementation |
+| TEST-01 | [x] | Rust unit/integration suite | 32 tests after URL protocol field parity |
 | TEST-02 | [x] | Go regression suite | `go test ./...` and `go vet ./...` |
 | TEST-03 | [ ] | Go/Rust golden-output corpus | Normalize nondeterministic formatting only |
 | TEST-04 | [ ] | Parser and ruleset fuzz targets | No panic/OOM within bounded inputs |

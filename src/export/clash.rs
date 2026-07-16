@@ -188,20 +188,38 @@ fn proxy_value(proxy: &Proxy) -> Value {
         }
         ProxyKind::Tuic => {
             insert(&mut object, "type", "tuic");
+            object.insert("version".into(), 5.into());
             insert(&mut object, "uuid", &proxy.uuid);
             insert(&mut object, "password", &proxy.password);
+            insert_nonempty(&mut object, "heartbeat-interval", &proxy.heartbeat_interval);
+            if let Some(value) = proxy.disable_sni {
+                object.insert("disable-sni".into(), value.into());
+            }
+            if let Some(value) = proxy.reduce_rtt {
+                object.insert("reduce-rtt".into(), value.into());
+            }
+            insert_option(&mut object, "request-timeout", proxy.request_timeout);
             insert_nonempty(
                 &mut object,
                 "congestion-controller",
                 &proxy.congestion_control,
             );
             insert_nonempty(&mut object, "udp-relay-mode", &proxy.udp_relay_mode);
-            add_tls(&mut object, proxy);
+            insert_option(
+                &mut object,
+                "max-udp-relay-packet-size",
+                proxy.max_udp_relay_packet_size,
+            );
+            insert_option(&mut object, "max-open-streams", proxy.max_open_streams);
+            if let Some(value) = proxy.fast_open {
+                object.insert("fast-open".into(), value.into());
+            }
+            add_native_tls(&mut object, proxy);
         }
         ProxyKind::Anytls => {
             insert(&mut object, "type", "anytls");
             insert(&mut object, "password", &proxy.password);
-            add_tls(&mut object, proxy);
+            add_native_tls(&mut object, proxy);
             insert_option(
                 &mut object,
                 "idle-session-check-interval",
@@ -219,9 +237,14 @@ fn proxy_value(proxy: &Proxy) -> Value {
             insert(&mut object, "password", &proxy.password);
             insert_nonempty(&mut object, "obfs", &proxy.obfs);
             insert_nonempty(&mut object, "obfs-password", &proxy.obfs_password);
+            insert_nonempty(&mut object, "ports", &proxy.ports);
             insert_option(&mut object, "up", proxy.up_mbps);
             insert_option(&mut object, "down", proxy.down_mbps);
-            add_tls(&mut object, proxy);
+            insert_nonempty(&mut object, "ca", &proxy.ca);
+            insert_nonempty(&mut object, "ca-str", &proxy.ca_str);
+            insert_option(&mut object, "cwnd", proxy.cwnd);
+            insert_option(&mut object, "hop-interval", proxy.hop_interval);
+            add_native_tls(&mut object, proxy);
         }
         ProxyKind::Http | ProxyKind::Https => {
             insert(&mut object, "type", "http");
@@ -258,6 +281,11 @@ fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {
         object.insert("ws-opts".into(), Value::Object(ws));
     } else if proxy.network == "grpc" {
         object.insert("grpc-opts".into(), json!({"grpc-service-name": proxy.path}));
+    } else if proxy.network == "h2" {
+        object.insert(
+            "h2-opts".into(),
+            json!({"host": [proxy.host], "path": proxy.path}),
+        );
     }
     if proxy.tls {
         object.insert("tls".into(), true.into());
@@ -276,6 +304,17 @@ fn add_tls(object: &mut Map<String, Value>, proxy: &Proxy) {
             "reality-opts".into(),
             json!({"public-key": proxy.public_key, "short-id": proxy.short_id}),
         );
+    }
+    if !proxy.alpn.is_empty() {
+        object.insert("alpn".into(), json!(proxy.alpn));
+    }
+}
+
+fn add_native_tls(object: &mut Map<String, Value>, proxy: &Proxy) {
+    insert_nonempty(object, "sni", &proxy.server_name);
+    insert_nonempty(object, "fingerprint", &proxy.fingerprint);
+    if let Some(insecure) = proxy.skip_cert_verify {
+        object.insert("skip-cert-verify".into(), insecure.into());
     }
     if !proxy.alpn.is_empty() {
         object.insert("alpn".into(), json!(proxy.alpn));
@@ -315,5 +354,30 @@ mod tests {
         let output = to_clash_full(&[], None, &groups, &[], false, 0, false, false).unwrap();
         let config: Value = serde_yaml::from_str(&output).unwrap();
         assert_eq!(config["rules"][0], "MATCH,PROXY");
+    }
+
+    #[test]
+    fn exports_extended_tuic_fields() {
+        let mut proxy = Proxy::new(ProxyKind::Tuic, "tuic.example".into(), 443);
+        proxy.name = "tuic".into();
+        proxy.uuid = "uuid".into();
+        proxy.password = "secret".into();
+        proxy.heartbeat_interval = "10s".into();
+        proxy.disable_sni = Some(true);
+        proxy.reduce_rtt = Some(true);
+        proxy.request_timeout = Some(8000);
+        proxy.max_udp_relay_packet_size = Some(1500);
+        proxy.max_open_streams = Some(100);
+        proxy.fast_open = Some(true);
+        proxy.server_name = "tls.example".into();
+        let output = to_clash(&[proxy], false, false).unwrap();
+        let config: Value = serde_yaml::from_str(&output).unwrap();
+        let proxy = &config["proxies"][0];
+        assert_eq!(proxy["version"], 5);
+        assert_eq!(proxy["heartbeat-interval"], "10s");
+        assert_eq!(proxy["disable-sni"], true);
+        assert_eq!(proxy["request-timeout"], 8000);
+        assert_eq!(proxy["max-open-streams"], 100);
+        assert_eq!(proxy["sni"], "tls.example");
     }
 }

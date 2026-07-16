@@ -21,7 +21,7 @@ pub fn parse_node(input: &str, group_id: u32) -> Result<Proxy> {
         parse_shadowsocks(input)?
     } else if input.starts_with("vmess://") || input.starts_with("vmess1://") {
         parse_vmess(input)?
-    } else if input.starts_with("vless://") {
+    } else if input.starts_with("vless://") || input.starts_with("vless1://") {
         parse_url_proxy(input, ProxyKind::Vless)?
     } else if input.starts_with("trojan://") {
         parse_url_proxy(input, ProxyKind::Trojan)?
@@ -91,6 +91,7 @@ pub fn looks_like_proxy(value: &str) -> bool {
         "vmess://",
         "vmess1://",
         "vless://",
+        "vless1://",
         "trojan://",
         "tuic://",
         "anytls://",
@@ -380,6 +381,9 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
     let input = if input.starts_with("hy2://") {
         normalized = input.replacen("hy2://", "hysteria2://", 1);
         normalized.as_str()
+    } else if input.starts_with("vless1://") {
+        normalized = input.replacen("vless1://", "vless://", 1);
+        normalized.as_str()
     } else if input.starts_with("socks://") {
         normalized = input.replacen("socks://", "socks5://", 1);
         normalized.as_str()
@@ -411,6 +415,9 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
             proxy.username.clear();
             proxy.flow = value(&query, &["flow"]);
             proxy.network = value(&query, &["type", "network"]);
+            if proxy.network.is_empty() {
+                proxy.network = "tcp".into();
+            }
             proxy.tls = matches!(
                 value(&query, &["security"]).as_str(),
                 "tls" | "reality" | "xtls"
@@ -425,11 +432,34 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
                 };
             }
             proxy.tls = true;
+            if kind == ProxyKind::Trojan {
+                proxy.network = value(&query, &["type", "network"]);
+                if parse_bool(&value(&query, &["ws"])).unwrap_or(false) {
+                    proxy.network = "ws".into();
+                }
+                if proxy.network.is_empty() {
+                    proxy.network = "tcp".into();
+                }
+            }
         }
         ProxyKind::Tuic => {
             proxy.uuid = std::mem::take(&mut proxy.username);
+            if proxy.uuid.is_empty() {
+                proxy.uuid = value(&query, &["uuid"]);
+            }
+            if proxy.password.is_empty() {
+                proxy.password = value(&query, &["password"]);
+            }
             proxy.congestion_control = value(&query, &["congestion_control"]);
             proxy.udp_relay_mode = value(&query, &["udp_relay_mode"]);
+            proxy.heartbeat_interval = value(&query, &["heartbeat_interval", "heartbeat"]);
+            proxy.disable_sni = parse_bool(&value(&query, &["disable_sni"]));
+            proxy.reduce_rtt = parse_bool(&value(&query, &["reduce_rtt"]));
+            proxy.request_timeout = parse_u32(&value(&query, &["request_timeout"]));
+            proxy.max_udp_relay_packet_size =
+                parse_u32(&value(&query, &["max_udp_relay_packet_size"]));
+            proxy.max_open_streams = parse_u32(&value(&query, &["max_open_streams"]));
+            proxy.fast_open = parse_bool(&value(&query, &["fast_open"]));
             proxy.tls = true;
         }
         _ => {}
@@ -437,11 +467,11 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
 
     proxy.server_name = value(&query, &["sni", "peer", "servername"]);
     proxy.host = value(&query, &["host"]);
-    proxy.path = value(&query, &["path"]);
+    proxy.path = value(&query, &["path", "wspath", "serviceName", "key"]);
     if proxy.network.is_empty() {
         proxy.network = value(&query, &["type", "network"]);
     }
-    proxy.fingerprint = value(&query, &["fp", "fingerprint"]);
+    proxy.fingerprint = value(&query, &["fp", "fingerprint", "pinSHA256", "hpkp"]);
     proxy.public_key = value(&query, &["pbk", "public_key"]);
     proxy.short_id = value(&query, &["sid", "short_id"]);
     proxy.obfs = value(&query, &["obfs"]);
@@ -455,6 +485,17 @@ fn parse_url_proxy(input: &str, kind: ProxyKind) -> Result<Proxy> {
     proxy.tcp_fast_open = parse_bool(&value(&query, &["tfo", "fast_open"]));
     proxy.up_mbps = parse_u32(&value(&query, &["upmbps", "up"]));
     proxy.down_mbps = parse_u32(&value(&query, &["downmbps", "down"]));
+    proxy.group = value(&query, &["group"]);
+    if kind == ProxyKind::Hysteria2 {
+        proxy.ports = non_empty(value(&query, &["ports", "mport"]), &proxy.port.to_string());
+        proxy.ca = value(&query, &["ca"]);
+        proxy.ca_str = value(&query, &["ca_str"]);
+        proxy.cwnd = parse_u32(&value(&query, &["cwnd"]));
+        proxy.hop_interval = parse_u32(&value(&query, &["hop_interval"]));
+    }
+    if kind == ProxyKind::Trojan && proxy.network == "ws" && proxy.host.is_empty() {
+        proxy.host = proxy.server_name.clone();
+    }
     proxy.idle_session_check_interval = parse_u32(&value(&query, &["idle_session_check_interval"]));
     proxy.idle_session_timeout = parse_u32(&value(&query, &["idle_session_timeout"]));
     proxy.min_idle_session = parse_u32(&value(&query, &["min_idle_session"]));
@@ -469,10 +510,10 @@ fn value(map: &HashMap<String, String>, keys: &[&str]) -> String {
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
-    if value.is_empty() {
-        None
-    } else {
-        value.parse().ok()
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "true" => Some(true),
+        "0" | "false" => Some(false),
+        _ => None,
     }
 }
 
@@ -605,6 +646,65 @@ mod tests {
         assert_eq!(proxy.password, "mypass");
         assert_eq!(proxy.server_name, "test.com");
         assert_eq!(proxy.idle_session_timeout, Some(60));
+    }
+
+    #[test]
+    fn parses_vless_reality_grpc_fields() {
+        let proxy = parse_node(
+            "vless1://52050057-f5e1-4b9e-b789-5f49b549fd21@vless.example:443?security=reality&type=grpc&serviceName=grpc-service&pbk=public-key&sid=01&fp=chrome&sni=tls.example#vless",
+            0,
+        )
+        .unwrap();
+        assert_eq!(proxy.kind, ProxyKind::Vless);
+        assert_eq!(proxy.network, "grpc");
+        assert_eq!(proxy.path, "grpc-service");
+        assert_eq!(proxy.public_key, "public-key");
+        assert_eq!(proxy.short_id, "01");
+        assert_eq!(proxy.fingerprint, "chrome");
+        assert!(proxy.tls);
+    }
+
+    #[test]
+    fn parses_trojan_websocket_aliases() {
+        let proxy = parse_node(
+            "trojan://secret@trojan.example:443?ws=1&wspath=%2Fsocket&peer=cdn.example&group=Trojan#trojan",
+            0,
+        )
+        .unwrap();
+        assert_eq!(proxy.network, "ws");
+        assert_eq!(proxy.path, "/socket");
+        assert_eq!(proxy.host, "cdn.example");
+        assert_eq!(proxy.server_name, "cdn.example");
+        assert_eq!(proxy.group, "Trojan");
+    }
+
+    #[test]
+    fn parses_extended_tuic_and_hysteria2_fields() {
+        let tuic = parse_node(
+            "tuic://tuic.example:443?uuid=52050057-f5e1-4b9e-b789-5f49b549fd21&password=secret&heartbeat_interval=10s&disable_sni=true&reduce_rtt=1&request_timeout=8000&udp_relay_mode=native&congestion_control=bbr&max_udp_relay_packet_size=1500&max_open_streams=100&fast_open=true&sni=tls.example#tuic",
+            0,
+        )
+        .unwrap();
+        assert_eq!(tuic.uuid, "52050057-f5e1-4b9e-b789-5f49b549fd21");
+        assert_eq!(tuic.heartbeat_interval, "10s");
+        assert_eq!(tuic.disable_sni, Some(true));
+        assert_eq!(tuic.reduce_rtt, Some(true));
+        assert_eq!(tuic.request_timeout, Some(8000));
+        assert_eq!(tuic.max_open_streams, Some(100));
+
+        let hysteria = parse_node(
+            "hy2://hy.example:443?password=secret&mport=20000-30000&up=100&down=200&obfs=salamander&obfs-password=obfs&pinSHA256=pin&ca=ca.pem&ca_str=certificate&cwnd=64&hop_interval=30&sni=tls.example#hy2",
+            0,
+        )
+        .unwrap();
+        assert_eq!(hysteria.ports, "20000-30000");
+        assert_eq!(hysteria.up_mbps, Some(100));
+        assert_eq!(hysteria.down_mbps, Some(200));
+        assert_eq!(hysteria.fingerprint, "pin");
+        assert_eq!(hysteria.ca, "ca.pem");
+        assert_eq!(hysteria.ca_str, "certificate");
+        assert_eq!(hysteria.cwnd, Some(64));
+        assert_eq!(hysteria.hop_interval, Some(30));
     }
 
     #[test]

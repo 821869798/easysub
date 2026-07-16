@@ -308,6 +308,7 @@ fn proxy_value(proxy: &Proxy) -> Value {
             insert(&mut object, "password", &proxy.password);
             insert_nonempty(&mut object, "congestion_control", &proxy.congestion_control);
             insert_nonempty(&mut object, "udp_relay_mode", &proxy.udp_relay_mode);
+            insert_nonempty(&mut object, "heartbeat", &proxy.heartbeat_interval);
             add_tls(&mut object, proxy);
         }
         ProxyKind::Anytls => {
@@ -342,6 +343,9 @@ fn proxy_value(proxy: &Proxy) -> Value {
             }
             if let Some(value) = proxy.down_mbps {
                 object.insert("down_mbps".into(), value.into());
+            }
+            if let Some(value) = proxy.hop_interval {
+                insert(&mut object, "hop_interval", &format!("{value}s"));
             }
             add_tls(&mut object, proxy);
         }
@@ -386,7 +390,7 @@ fn add_transport(object: &mut Map<String, Value>, proxy: &Proxy) {
                 json!({"type": "grpc", "service_name": proxy.path}),
             );
         }
-        "http" => {
+        "http" | "h2" => {
             object.insert(
                 "transport".into(),
                 json!({"type": "http", "host": [proxy.host], "path": proxy.path}),
@@ -510,5 +514,33 @@ mod tests {
             .find(|ruleset| ruleset["tag"] == "geosite-openai")
             .unwrap();
         assert_eq!(geosite["url"], "https://example.test/geosite/openai.srs");
+    }
+
+    #[test]
+    fn exports_tuic_heartbeat_and_hysteria_hop_interval() {
+        let mut tuic = Proxy::new(ProxyKind::Tuic, "tuic.example".into(), 443);
+        tuic.name = "tuic".into();
+        tuic.uuid = "uuid".into();
+        tuic.password = "secret".into();
+        tuic.heartbeat_interval = "10s".into();
+        tuic.tls = true;
+        let mut hysteria = Proxy::new(ProxyKind::Hysteria2, "hy.example".into(), 443);
+        hysteria.name = "hy2".into();
+        hysteria.password = "secret".into();
+        hysteria.hop_interval = Some(30);
+        hysteria.tls = true;
+        let output = to_singbox(&[tuic, hysteria], false, false).unwrap();
+        let config: Value = serde_json::from_str(&output).unwrap();
+        let outbounds = config["outbounds"].as_array().unwrap();
+        let tuic = outbounds
+            .iter()
+            .find(|outbound| outbound["tag"] == "tuic")
+            .unwrap();
+        let hysteria = outbounds
+            .iter()
+            .find(|outbound| outbound["tag"] == "hy2")
+            .unwrap();
+        assert_eq!(tuic["heartbeat"], "10s");
+        assert_eq!(hysteria["hop_interval"], "30s");
     }
 }
