@@ -37,6 +37,79 @@ pub fn parse_subscription(content: &str, group_id: u32) -> Option<Vec<Proxy>> {
     (recognized && !nodes.is_empty()).then_some(nodes)
 }
 
+pub fn parse_netch(content: &[u8], group_id: u32) -> Option<Proxy> {
+    let value: Value = serde_json::from_slice(content).ok()?;
+    let object = value.as_object()?;
+    let type_name = text(object, &["Type"]).to_ascii_lowercase();
+    let kind = match type_name.as_str() {
+        "ss" => ProxyKind::Shadowsocks,
+        "vmess" => ProxyKind::Vmess,
+        "vless" => ProxyKind::Vless,
+        "trojan" => ProxyKind::Trojan,
+        "socks5" => ProxyKind::Socks5,
+        "http" => ProxyKind::Http,
+        "https" => ProxyKind::Https,
+        "snell" => ProxyKind::Snell,
+        "wireguard" => ProxyKind::Wireguard,
+        _ => return None,
+    };
+    let server = text(object, &["Hostname"]);
+    let port = number_u16(object, &["Port"])?;
+    if server.is_empty() || port == 0 {
+        return None;
+    }
+    let mut proxy = Proxy::new(kind, server, port);
+    proxy.group_id = group_id;
+    proxy.group = text(object, &["Group"]);
+    proxy.name = non_empty(
+        text(object, &["Remark"]),
+        &format!("{}:{}", proxy.server, proxy.port),
+    );
+    proxy.username = text(object, &["Username"]);
+    proxy.password = text(object, &["Password"]);
+    proxy.method = text(object, &["EncryptMethod"]);
+    proxy.plugin = text(object, &["Plugin"]);
+    proxy.plugin_opts = value_text(object, &["PluginOption"]);
+    proxy.uuid = non_empty(text(object, &["UUID"]), &text(object, &["UserID"]));
+    proxy.alter_id = number_u16(object, &["AlterID"]).unwrap_or_default();
+    proxy.network = text(object, &["TransferProtocol"]);
+    proxy.host = text(object, &["Host"]);
+    proxy.path = text(object, &["Path"]);
+    proxy.server_name = text(object, &["ServerName"]);
+    proxy.flow = text(object, &["Flow"]);
+    proxy.tls = boolean(object, &["TLSSecure"]).unwrap_or(kind == ProxyKind::Https);
+    proxy.udp = boolean(object, &["EnableUDP"]);
+    proxy.tcp_fast_open = boolean(object, &["EnableTFO"]);
+    proxy.skip_cert_verify = boolean(object, &["AllowInsecure"]);
+    proxy.obfs = text(object, &["OBFS"]);
+    proxy.obfs_password = text(object, &["OBFSParam"]);
+    proxy.snell_version = number_u16(object, &["SnellVersion"]);
+    proxy.wireguard_address = [text(object, &["SelfIP"]), text(object, &["SelfIPv6"])]
+        .into_iter()
+        .filter(|address| !address.is_empty())
+        .collect();
+    proxy.private_key = text(object, &["PrivateKey"]);
+    proxy.public_key = text(object, &["PublicKey"]);
+    proxy.pre_shared_key = text(object, &["PreSharedKey"]);
+    let allowed_ips = text(object, &["AllowedIPs"]);
+    if !allowed_ips.is_empty() {
+        proxy.allowed_ips = allowed_ips
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+    }
+    proxy.dns_servers = string_list(object, &["DnsServers"]);
+    proxy.mtu = number_u16(object, &["Mtu"]);
+    proxy.persistent_keepalive = number_u16(object, &["KeepAlive"]);
+    proxy.reserved = text(object, &["ClientId"])
+        .split(',')
+        .filter_map(|value| value.trim().parse().ok())
+        .collect();
+    Some(proxy)
+}
+
 fn parse_surge_proxies(content: &str, group_id: u32) -> Vec<Proxy> {
     let mut in_proxy_section = false;
     let mut nodes = Vec::new();

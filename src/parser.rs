@@ -46,6 +46,10 @@ pub fn parse_node(input: &str, group_id: u32) -> Result<Proxy> {
         parse_url_proxy(input, ProxyKind::Socks5)?
     } else if input.starts_with("snell://") {
         parse_url_proxy(input, ProxyKind::Snell)?
+    } else if input.starts_with("Netch://") {
+        let bytes = decode_base64(input.trim_start_matches("Netch://"))?;
+        crate::structured::parse_netch(&bytes, group_id)
+            .ok_or_else(|| AppError::BadRequest("invalid Netch proxy payload".into()))?
     } else if input.starts_with("http://") || input.starts_with("https://") {
         parse_url_proxy(
             input,
@@ -111,6 +115,7 @@ pub fn looks_like_proxy(value: &str) -> bool {
         "socks://",
         "socks5://",
         "snell://",
+        "Netch://",
         "https://t.me/socks",
         "tg://socks",
         "https://t.me/http",
@@ -833,5 +838,39 @@ mod tests {
         assert_eq!(proxy.snell_version, Some(3));
         assert_eq!(proxy.obfs, "http");
         assert_eq!(proxy.host, "cdn.example");
+    }
+
+    #[test]
+    fn parses_netch_vmess_payload() {
+        let payload = serde_json::json!({
+            "Type": "VMess",
+            "Group": "Netch",
+            "Remark": "netch-vmess",
+            "Hostname": "netch.example",
+            "Port": "443",
+            "UserID": "52050057-f5e1-4b9e-b789-5f49b549fd21",
+            "AlterID": "0",
+            "EncryptMethod": "auto",
+            "TransferProtocol": "ws",
+            "Host": "cdn.example",
+            "Path": "/ws",
+            "TLSSecure": true,
+            "ServerName": "tls.example",
+            "EnableUDP": true,
+            "EnableTFO": false,
+            "AllowInsecure": true
+        });
+        let encoded = general_purpose::URL_SAFE_NO_PAD.encode(payload.to_string());
+        let proxy = parse_node(&format!("Netch://{encoded}"), 5).unwrap();
+        assert_eq!(proxy.kind, ProxyKind::Vmess);
+        assert_eq!(proxy.group, "Netch");
+        assert_eq!(proxy.name, "netch-vmess");
+        assert_eq!(proxy.network, "ws");
+        assert_eq!(proxy.host, "cdn.example");
+        assert!(proxy.tls);
+        assert_eq!(proxy.udp, Some(true));
+        assert_eq!(proxy.tcp_fast_open, Some(false));
+        assert_eq!(proxy.skip_cert_verify, Some(true));
+        assert_eq!(proxy.group_id, 5);
     }
 }
