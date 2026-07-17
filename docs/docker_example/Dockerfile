@@ -1,31 +1,36 @@
-FROM golang:latest AS builder
-LABEL maintainer="821869798@qq.com"
-ARG THREADS="4"
-ARG SHA=""
+FROM rust:1.96.0-alpine AS builder
 
-# build minimized
-WORKDIR /
-RUN git clone https://github.com/821869798/easysub --depth=1 && \
-    cd easysub && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o easysub ./main.go
+RUN apk add --no-cache build-base cmake perl
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY src ./src
+COPY benches ./benches
+RUN test "$(rustc --version | awk '{print $2}')" = "1.96.0"
+RUN cargo build --locked --release
 
 FROM alpine:latest
 
-# copy config file & copy execute file
-COPY --from=builder /easysub/workdir /workdir/
-COPY --from=builder /easysub/easysub /workdir/easysub
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S easysub \
+    && adduser -S -G easysub easysub
 
-# copy local config file into docker
-COPY /docs/docker_example /workdir/
+WORKDIR /app
+COPY --from=builder /build/target/release/easysub-rs /app/easysub-rs
+COPY workdir /app/workdir
+COPY docs/docker_example/workdir /app/workdir
+RUN cp /app/workdir/pref.example.toml /app/workdir/pref.toml \
+    && chown -R easysub:easysub /app
 
-# set work dir
-WORKDIR /workdir
+USER easysub
 
-# modify config (optional)
-Run cp pref.example.toml pref.toml -f && \
-    sed -i '/key = "clash.log_level"/{N;s/value = "info"/value = "warning"/}' pref.toml && \
-    sed -i '/key = "singbox.log_level"/{N;s/value = "info"/value = "warn"/}' pref.toml 
+ENV EASYSUB_CONFIG=/app/workdir/pref.toml \
+    PORT=25500 \
+    RUST_LOG=easysub_rs=info,tower_http=info
 
 EXPOSE 25500/tcp
 
-ENTRYPOINT ["/workdir/easysub"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:25500/healthz || exit 1
+
+ENTRYPOINT ["/app/easysub-rs"]

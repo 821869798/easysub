@@ -1,9 +1,7 @@
-name: Rust rewrite CI
+name: Rust CI
 
 on:
   push:
-    branches:
-      - feat/rust-rewrite
     paths:
       - Cargo.toml
       - Cargo.lock
@@ -15,7 +13,8 @@ on:
       - "workdir/**"
       - Dockerfile
       - .dockerignore
-      - ".github/workflows/rust_rewrite_ci.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - Cargo.toml
@@ -28,7 +27,8 @@ on:
       - "workdir/**"
       - Dockerfile
       - .dockerignore
-      - ".github/workflows/rust_rewrite_ci.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
@@ -71,6 +71,7 @@ jobs:
       EASYSUB_BENCH_MAX_PARSE_1000_NODES_MS: "50"
       EASYSUB_BENCH_MAX_CLASH_EXPORT_1000_NODES_MS: "100"
       EASYSUB_BENCH_MAX_SINGBOX_EXPORT_1000_NODES_MS: "50"
+      EASYSUB_BENCH_MAX_GROUP_SELECT_1000_NODES_MS: "20"
       EASYSUB_BENCH_MAX_MRS_10000_DOMAINS_MS: "100"
       EASYSUB_BENCH_MAX_PARSE_10000_MIXED_RULES_MS: "100"
     steps:

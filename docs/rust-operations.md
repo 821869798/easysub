@@ -1,8 +1,8 @@
 # Rust 版本部署与运维
 
-本文适用于 `feat/rust-rewrite` 上的 `easysub-rs`。Rust 服务已经可用于开发、
-shadow 和 canary 验证，但在 [RUST_PROGRESS.md](../RUST_PROGRESS.md) 的
-cutover 项完成前，不应直接删除 Go 回滚路径。
+本文适用于仓库根目录的 `easysub-rs`。Rust 是当前服务实现；旧 Go 工程保留在
+[`legacy/`](../legacy/) 作为兼容性参考和回滚来源。正式切换前仍应完成
+[RUST_PROGRESS.md](../RUST_PROGRESS.md) 中的 canary 观察。
 
 ## 构建与启动
 

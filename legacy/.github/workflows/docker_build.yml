@@ -1,3 +1,4 @@
+# Archived Go-era Docker workflow. Files below legacy/.github/workflows are not executed.
 name: Docker build
 
 on:

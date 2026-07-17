@@ -1,4 +1,4 @@
-# .github/workflows/release.yml
+# Archived Go release workflow. Files below legacy/.github/workflows are not executed.
 name: Build and Release
 
 on:

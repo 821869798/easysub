@@ -14,8 +14,8 @@ import (
 
 func main() {
 	// The Go configuration resolves private-subscription paths from the process
-	// working directory, so generate fixtures from the checked-in workdir.
-	if err := os.Chdir("workdir"); err != nil {
+	// The legacy module shares the checked-in Rust workdir at the repository root.
+	if err := os.Chdir("../workdir"); err != nil {
 		slog.Error("enter workdir error: " + err.Error())
 		return
 	}

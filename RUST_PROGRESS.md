@@ -1,10 +1,11 @@
 # easysub Rust rewrite progress
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 Branch: `feat/rust-rewrite`
 
-Target: replace the Go service only after every P0 acceptance item below passes.
+Target: operate the repository-root Rust service while retaining `legacy/` as the
+Go compatibility oracle and rollback source until canary acceptance completes.
 
 ## Status legend
 
@@ -21,7 +22,8 @@ Target: replace the Go service only after every P0 acceptance item below passes.
 - [x] Performance: release throughput, latency, peak memory, and binary size have repeatable measurements and optional gates.
 - [ ] Cutover: Rust has completed a shadow/canary period before the Go binary is removed.
 
-The rewrite is currently a usable development implementation, not yet a complete Go replacement.
+Rust is now the repository-root implementation. The remaining cutover gate is
+production observation rather than missing conversion functionality.
 
 ## HTTP and runtime
 
@@ -111,9 +113,10 @@ The rewrite is currently a usable development implementation, not yet a complete
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
 | TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.612 ms; Clash 12.520 ms; sing-box 1.718 ms; 1k-node/10-regex group selection 0.754 ms; 10k MRS 3.615 ms; 10k mixed rules 3.099 ms; 16 full-ACL requests 0.697 s |
 | TEST-06 | [x] | Release binary-size baseline | 7.84 MiB on Windows x86-64 with latest dependencies |
-| TEST-07 | [-] | CI gates | First remote run exposed a stale 1.85 toolchain file; pin and explicit 1.96 assertions fixed, awaiting rerun |
+| TEST-07 | [x] | CI gates | Rust 1.96 correctness, performance/size and container-health jobs passed remotely for `068d9f2`; the root workflow is now Rust-only |
 | DOC-01 | [x] | Rust deployment/operations README | Build/config precedence, resource limits, logging, SIGINT/SIGTERM shutdown, canary and rollback runbook |
-| CONT-01 | [-] | Rust multi-stage container image | Rust 1.96 builder, non-root Alpine runtime and healthcheck added; awaiting remote Docker CI because Docker is unavailable locally |
+| CONT-01 | [x] | Rust multi-stage container image | Rust 1.96 builder, non-root Alpine runtime and healthcheck passed remote Docker CI; local Docker remains unavailable |
+| REL-01 | [-] | Rust tag release automation | Five native platform archives, SHA-256 files, draft GitHub Release publication and multi-architecture GHCR publishing added; awaiting the first version-tag run |
 | CUT-01 | [ ] | Shadow/canary deployment | Compare output and runtime metrics |
 
 ## Toolchain and dependencies

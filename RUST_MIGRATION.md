@@ -1,7 +1,8 @@
 # easysub Rust migration plan
 
-The Go implementation remains the compatibility oracle until the Rust service
-passes the same fixtures and can serve production traffic independently.
+The migration implementation is complete. Rust is the repository-root service,
+while the previous Go module is archived under `legacy/` as a compatibility oracle
+and rollback source.
 
 ## Design goals
 
@@ -37,19 +38,19 @@ Defaults are conservative but can be raised without recompiling.
 
 ## Current implementation status
 
-Completed on `feat/rust-rewrite`:
+Completed:
 
 - Axum/Tokio service, bounded fetch/cache, tracing, and graceful shutdown;
 - core subscription parsers and deterministic Clash/sing-box exporters;
 - independent MRS v1 Domain/IPCIDR generation with Mihomo-compatible fixtures;
 - external INI configs, ordered custom groups, and inline/remote rulesets;
-- private subscription variables and `/p/*path` internal rewrites.
+- private subscription variables and `/p/*path` internal rewrites;
+- Go/Rust golden-output corpus and malformed-input property tests;
+- reproducible latency, throughput, peak-memory, and binary-size gates;
+- repository-root Rust CI and tag-driven multi-platform release automation.
 
-Still required before replacing the Go service:
-
-- remaining protocol and ruleset transformation edge cases;
-- Go/Rust golden-output corpus and malformed-input fuzzing;
-- reproducible latency, throughput, peak-memory, and binary-size gates.
+Production canary observation remains an operational cutover gate, not an
+implementation gap.
 
 ## Compatibility policy
 
