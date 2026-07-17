@@ -9,7 +9,7 @@ COPY benches ./benches
 RUN test "$(rustc --version | awk '{print $2}')" = "1.96.0"
 RUN cargo build --locked --release
 
-FROM alpine:latest
+FROM alpine:latest AS runtime
 
 LABEL maintainer="821869798@qq.com"
 
@@ -18,7 +18,6 @@ RUN apk add --no-cache ca-certificates \
     && adduser -S -G easysub easysub
 
 WORKDIR /app
-COPY --from=builder /build/target/release/easysub-rs /app/easysub-rs
 COPY workdir /app/workdir
 RUN cp /app/workdir/pref.example.toml /app/workdir/pref.toml \
     && sed -i '/key = "clash.log_level"/{N;s/value = "info"/value = "warning"/}' /app/workdir/pref.toml \
@@ -37,3 +36,11 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:25500/healthz || exit 1
 
 ENTRYPOINT ["/app/easysub-rs"]
+
+# Release workflow target: packages a binary built on the native GitHub runner.
+FROM runtime AS release
+COPY --chown=easysub:easysub container-binary/easysub-rs /app/easysub-rs
+
+# Default target: keep regular Docker and Railway builds source-based.
+FROM runtime AS source-build
+COPY --from=builder --chown=easysub:easysub /build/target/release/easysub-rs /app/easysub-rs

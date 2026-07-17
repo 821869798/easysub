@@ -12,3 +12,5 @@
 !docs/docker_example/
 !docs/docker_example/workdir/
 !docs/docker_example/workdir/**
+!container-binary/
+!container-binary/easysub-rs
