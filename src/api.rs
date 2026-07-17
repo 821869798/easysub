@@ -22,30 +22,30 @@ use tower_http::{
 use crate::{
     config::AppConfig,
     error::{AppError, Result},
-    export::{
-        ClashRulesetOptions, SingboxExportOptions, to_clash, to_clash_full_with_options,
-        to_singbox_full_with_options,
-    },
-    external::{self, ExternalConfig, LoadedRuleset},
     fetch::{FetchMetadata, Fetcher},
-    model::{Proxy, RuleBehavior},
+    model::RuleBehavior,
     mrs,
-    parser::{looks_like_proxy, parse_node, parse_subscription},
     rules::normalize_rules_allow_empty,
-    template,
+    subscription::{
+        ClashSubscriptionOptions, NodeConversionOptions, SubscriptionInput, SubscriptionRequest,
+        SubscriptionService, SubscriptionTarget,
+    },
 };
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub fetcher: Fetcher,
+    pub subscriptions: SubscriptionService,
     heavy_tasks: Arc<Semaphore>,
 }
 
 impl AppState {
     pub fn new(config: Arc<AppConfig>) -> Result<Self> {
+        let fetcher = Fetcher::new(&config)?;
         Ok(Self {
-            fetcher: Fetcher::new(&config)?,
+            subscriptions: SubscriptionService::with_fetcher(config.clone(), fetcher.clone()),
+            fetcher,
             heavy_tasks: Arc::new(Semaphore::new(config.advance.heavy_task_concurrency)),
             config,
         })
@@ -181,271 +181,47 @@ async fn subscription_impl(
     headers: HeaderMap,
     trusted: bool,
 ) -> Result<Response> {
-    let authorized = trusted || request_is_authorized(&state.config, query.token.as_deref());
-    let uses_default_sources = query.url.as_deref().is_none_or(str::is_empty);
-    if state.config.common.api_mode && uses_default_sources && !authorized {
-        return Err(AppError::Unauthorized(
-            "token is required to use default subscription sources".into(),
-        ));
-    }
-    let mut sources = sources_or_default(query.url.as_deref(), &state.config)?;
-    reject_sensitive_sources(&sources, authorized, "subscription")?;
-    let insert = query_flag(query.insert.as_deref()).unwrap_or(state.config.common.enable_insert);
-    if insert && !state.config.common.insert_url.is_empty() {
-        if state.config.common.prepend_insert_url {
-            let mut combined = state.config.common.insert_url.clone();
-            combined.extend(sources);
-            sources = combined;
-        } else {
-            sources.extend(state.config.common.insert_url.iter().cloned());
-        }
-    }
-    enforce_source_limit(&sources, &state.config)?;
-    let concurrency = state
-        .config
-        .advance
-        .fetch_concurrency
-        .min(sources.len())
-        .max(1);
-    let ttl = Duration::from_secs(state.config.advance.cache_subscription);
-
-    let skip_failed = state.config.advance.skip_failed_links;
-    let mut loaded: Vec<(usize, Vec<Proxy>, FetchMetadata)> =
-        stream::iter(sources.into_iter().enumerate())
-            .map(|(index, source)| {
-                let state = state.clone();
-                async move {
-                    let result = async {
-                        if looks_like_proxy(&source) {
-                            return parse_node(&source, index as u32)
-                                .map(|node| (vec![node], FetchMetadata::default()));
-                        }
-                        let fetched = state.fetcher.get_with_metadata(&source, ttl, false).await?;
-                        let text = std::str::from_utf8(&fetched.body).map_err(|_| {
-                            AppError::BadRequest("subscription is not UTF-8".into())
-                        })?;
-                        parse_subscription(text, index as u32)
-                            .map(|nodes| (nodes, fetched.metadata))
-                    }
-                    .await;
-                    match result {
-                        Ok((nodes, metadata)) => Ok((index, nodes, metadata)),
-                        Err(error) if skip_failed => {
-                            tracing::warn!(%error, %source, "skipping failed subscription source");
-                            Ok((index, Vec::new(), FetchMetadata::default()))
-                        }
-                        Err(error) => Err(error),
-                    }
-                }
-            })
-            .buffer_unordered(concurrency)
-            .try_collect()
-            .await?;
-    loaded.sort_by_key(|(index, _, _)| *index);
-    let metadata = merge_fetch_metadata(&loaded);
-    let mut nodes: Vec<Proxy> = loaded.into_iter().flat_map(|(_, nodes, _)| nodes).collect();
-    if nodes.is_empty() {
-        return Err(AppError::BadRequest(
-            "all subscription sources failed or contained no supported nodes".into(),
-        ));
-    }
-
-    let udp = query_flag(query.udp.as_deref()).or(state.config.node_pref.udp_flag);
-    let tfo = query_flag(query.tfo.as_deref()).or(state.config.node_pref.tcp_fast_open_flag);
-    let skip_cert_verify =
-        query_flag(query.scv.as_deref()).or(state.config.node_pref.skip_cert_verify_flag);
-    for node in &mut nodes {
-        if let Some(value) = udp {
-            node.udp = Some(value);
-        }
-        if let Some(value) = tfo {
-            node.tcp_fast_open = Some(value);
-        }
-        if let Some(value) = skip_cert_verify {
-            node.skip_cert_verify = Some(value);
-        }
-    }
-    if query_flag(query.fdn.as_deref()).unwrap_or(state.config.node_pref.filter_deprecated_nodes) {
-        nodes.retain(|node| {
-            node.kind != crate::model::ProxyKind::Shadowsocks || node.method != "chacha20"
-        });
-    }
-    if nodes.is_empty() {
-        return Err(AppError::BadRequest(
-            "all subscription nodes were filtered".into(),
-        ));
-    }
-    let append_type = query_flag(query.append_type.as_deref()).unwrap_or(
-        state.config.common.append_proxy_type || state.config.node_pref.append_proxy_type,
-    );
-    let sort = query_flag(query.sort.as_deref()).unwrap_or(state.config.node_pref.sort_flag);
-    let request_variables = query_variables(raw_query.as_deref());
-    let external = load_external_config(
-        &state,
-        query.config.as_deref(),
-        &request_variables,
-        authorized,
-    )
-    .await?;
-    let enable_rule_generator = external
-        .as_ref()
-        .is_none_or(|external| external.enable_rule_generator);
-    let loaded_rulesets = if external
-        .as_ref()
-        .is_some_and(|external| external.enable_rule_generator)
-    {
-        load_rulesets(
-            &state,
-            &external.as_ref().expect("checked above").rulesets,
-            authorized,
-        )
-        .await?
-    } else {
-        Vec::new()
+    let target: SubscriptionTarget = query.target.parse()?;
+    let optimize_to_http = query_flag(query.clash_rsoh.as_deref())
+        .unwrap_or(state.config.node_pref.clash_ruleset_optimize_to_http);
+    let provider_base_url = (target.is_clash() && optimize_to_http)
+        .then(|| request_base_url(&headers))
+        .transpose()?;
+    let sources = query
+        .url
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(split_sources)
+        .unwrap_or_default()
+        .into_iter()
+        .map(SubscriptionInput::Source)
+        .collect();
+    let mut request = SubscriptionRequest::new(target);
+    request.sources = sources;
+    request.external_config = query.config;
+    request.access_token = query.token;
+    request.trusted = trusted;
+    request.insert = query_flag(query.insert.as_deref());
+    request.nodes = NodeConversionOptions {
+        udp: query_flag(query.udp.as_deref()),
+        tcp_fast_open: query_flag(query.tfo.as_deref()),
+        skip_cert_verify: query_flag(query.scv.as_deref()),
+        filter_deprecated: query_flag(query.fdn.as_deref()),
+        append_proxy_type: query_flag(query.append_type.as_deref()),
+        sort: query_flag(query.sort.as_deref()),
     };
-    let groups = external
-        .as_ref()
-        .map(|external| external.groups.as_slice())
-        .unwrap_or_default();
-    let overwrite_rules = external
-        .as_ref()
-        .is_some_and(|external| external.overwrite_original_rules);
-    let mut response = match query.target.to_ascii_lowercase().as_str() {
-        "clash" | "clashr" => {
-            let optimize = query_flag(query.clash_rso.as_deref())
-                .unwrap_or(state.config.node_pref.clash_ruleset_optimize);
-            let optimize_to_http = query_flag(query.clash_rsoh.as_deref())
-                .unwrap_or(state.config.node_pref.clash_ruleset_optimize_to_http);
-            let geo_convert = query_flag(query.clash_gvr.as_deref())
-                .unwrap_or(state.config.node_pref.clash_geo_convert_ruleset);
-            let ruleset_options = ClashRulesetOptions {
-                proxies_style: state.config.node_pref.clash_proxies_style.clone(),
-                proxy_groups_style: state.config.node_pref.clash_proxy_groups_style.clone(),
-                optimize,
-                optimize_to_http,
-                geo_convert,
-                provider_base_url: optimize_to_http
-                    .then(|| request_base_url(&headers))
-                    .transpose()?,
-                access_token: query.token.clone(),
-                update_interval: state.config.managed_config.ruleset_update_interval,
-                geo_transforms: state.config.node_pref.clash_rulesets.clone(),
-            };
-            let base_source = external
-                .as_ref()
-                .and_then(|external| external.clash_rule_base.as_deref())
-                .unwrap_or(&state.config.common.clash_rule_base);
-            if external
-                .as_ref()
-                .and_then(|external| external.clash_rule_base.as_deref())
-                .is_some_and(is_sensitive_source)
-                && !authorized
-            {
-                return Err(AppError::Unauthorized(
-                    "token is required for a local Clash rule base".into(),
-                ));
-            }
-            let base = rendered_base(&state, base_source, &request_variables, false).await?;
-            text_response(
-                match base.as_deref() {
-                    Some(base) => to_clash_full_with_options(
-                        &nodes,
-                        Some(base),
-                        groups,
-                        &loaded_rulesets,
-                        overwrite_rules,
-                        state.config.advance.max_allowed_rules,
-                        append_type,
-                        sort,
-                        &ruleset_options,
-                    )?,
-                    None if external.is_some() => to_clash_full_with_options(
-                        &nodes,
-                        None,
-                        groups,
-                        &loaded_rulesets,
-                        overwrite_rules,
-                        state.config.advance.max_allowed_rules,
-                        append_type,
-                        sort,
-                        &ruleset_options,
-                    )?,
-                    None => to_clash(&nodes, append_type, sort)?,
-                },
-                "text/yaml; charset=utf-8",
-            )
-        }
-        "singbox" | "sing-box" => {
-            let export_options = SingboxExportOptions {
-                add_clash_modes: state.config.node_pref.singbox_add_clash_modes,
-                generate_rules: enable_rule_generator,
-            };
-            let base_source = external
-                .as_ref()
-                .and_then(|external| external.singbox_rule_base.as_deref())
-                .unwrap_or(&state.config.common.singbox_rule_base);
-            if external
-                .as_ref()
-                .and_then(|external| external.singbox_rule_base.as_deref())
-                .is_some_and(is_sensitive_source)
-                && !authorized
-            {
-                return Err(AppError::Unauthorized(
-                    "token is required for a local sing-box rule base".into(),
-                ));
-            }
-            let base = rendered_base(&state, base_source, &request_variables, true).await?;
-            text_response(
-                match base.as_deref() {
-                    Some(base) => to_singbox_full_with_options(
-                        &nodes,
-                        Some(base),
-                        groups,
-                        &loaded_rulesets,
-                        overwrite_rules,
-                        state.config.advance.max_allowed_rules,
-                        &state.config.node_pref.singbox_rulesets,
-                        state.config.managed_config.ruleset_update_interval,
-                        append_type,
-                        sort,
-                        &export_options,
-                    )?,
-                    None if external.is_some() => to_singbox_full_with_options(
-                        &nodes,
-                        None,
-                        groups,
-                        &loaded_rulesets,
-                        overwrite_rules,
-                        state.config.advance.max_allowed_rules,
-                        &state.config.node_pref.singbox_rulesets,
-                        state.config.managed_config.ruleset_update_interval,
-                        append_type,
-                        sort,
-                        &export_options,
-                    )?,
-                    None => to_singbox_full_with_options(
-                        &nodes,
-                        None,
-                        &[],
-                        &[],
-                        false,
-                        state.config.advance.max_allowed_rules,
-                        &state.config.node_pref.singbox_rulesets,
-                        state.config.managed_config.ruleset_update_interval,
-                        append_type,
-                        sort,
-                        &export_options,
-                    )?,
-                },
-                "application/json; charset=utf-8",
-            )
-        }
-        target => Err(AppError::BadRequest(format!(
-            "unsupported target: {target}"
-        ))),
-    }?;
+    request.clash = ClashSubscriptionOptions {
+        ruleset_optimize: query_flag(query.clash_rso.as_deref()),
+        ruleset_optimize_to_http: query_flag(query.clash_rsoh.as_deref()),
+        geo_convert_ruleset: query_flag(query.clash_gvr.as_deref()),
+        provider_base_url,
+    };
+    request.template_variables = query_variables(raw_query.as_deref());
+
+    let output = state.subscriptions.convert(request).await?;
+    let mut response = text_response(output.content, output.content_type)?;
     if state.config.node_pref.append_sub_userinfo {
-        apply_fetch_metadata(&mut response, &metadata);
+        apply_fetch_metadata(&mut response, &output.metadata);
     }
     Ok(response)
 }
@@ -533,14 +309,6 @@ async fn ruleset(
         )
         .body(Body::from(encoded))
         .map_err(|error| AppError::Internal(error.to_string()))
-}
-
-fn sources_or_default(url: Option<&str>, config: &AppConfig) -> Result<Vec<String>> {
-    match url {
-        Some(url) if !url.is_empty() => Ok(split_sources(url)),
-        _ if !config.common.default_url.is_empty() => Ok(config.common.default_url.clone()),
-        _ => Err(AppError::BadRequest("no subscription URL provided".into())),
-    }
 }
 
 fn split_sources(value: &str) -> Vec<String> {
@@ -635,19 +403,11 @@ fn enforce_source_limit(sources: &[String], config: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-fn merge_fetch_metadata(loaded: &[(usize, Vec<Proxy>, FetchMetadata)]) -> FetchMetadata {
-    let first = |select: fn(&FetchMetadata) -> &Option<String>| {
-        loaded
-            .iter()
-            .filter_map(|(_, _, metadata)| select(metadata).as_deref())
-            .find(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-    };
-    FetchMetadata {
-        subscription_userinfo: first(|metadata| &metadata.subscription_userinfo),
-        profile_web_page_url: first(|metadata| &metadata.profile_web_page_url),
-        profile_update_interval: first(|metadata| &metadata.profile_update_interval),
-    }
+#[cfg(test)]
+fn merge_fetch_metadata(
+    loaded: &[(usize, Vec<crate::model::Proxy>, FetchMetadata)],
+) -> FetchMetadata {
+    crate::subscription::merge_fetch_metadata(loaded)
 }
 
 fn apply_fetch_metadata(response: &mut Response, metadata: &FetchMetadata) {
@@ -673,136 +433,13 @@ fn apply_fetch_metadata(response: &mut Response, metadata: &FetchMetadata) {
     }
 }
 
-async fn rendered_base(
-    state: &AppState,
-    source: &str,
-    request: &std::collections::HashMap<String, String>,
-    singbox: bool,
-) -> Result<Option<String>> {
-    if source.is_empty() {
-        return Ok(None);
-    }
-    let source = state.config.resolve_source(source);
-    let bytes = state
-        .fetcher
-        .get(
-            &source,
-            Duration::from_secs(state.config.advance.cache_config),
-            true,
-        )
-        .await?;
-    let text = std::str::from_utf8(&bytes)
-        .map_err(|_| AppError::BadRequest("base template is not UTF-8".into()))?;
-    template::render(text, request, &state.config, singbox).map(Some)
-}
-
-async fn load_external_config(
-    state: &AppState,
-    requested: Option<&str>,
-    request: &std::collections::HashMap<String, String>,
-    authorized: bool,
-) -> Result<Option<ExternalConfig>> {
-    let source = requested.filter(|source| !source.is_empty()).or_else(|| {
-        (!state.config.common.default_external_config.is_empty())
-            .then_some(state.config.common.default_external_config.as_str())
-    });
-    let Some(source) = source else {
-        return Ok(None);
-    };
-    if requested.is_some() && is_sensitive_source(source) && !authorized {
-        return Err(AppError::Unauthorized(
-            "token is required for a local external config".into(),
-        ));
-    }
-    let source = state.config.resolve_source(source);
-    let bytes = state
-        .fetcher
-        .get(
-            &source,
-            Duration::from_secs(state.config.advance.cache_config),
-            true,
-        )
-        .await?;
-    let text = std::str::from_utf8(&bytes)
-        .map_err(|_| AppError::BadRequest("external config is not UTF-8".into()))?;
-    let rendered = template::render(text, request, &state.config, false)?;
-    external::parse(&rendered).map(Some)
-}
-
+#[cfg(test)]
 async fn load_rulesets(
     state: &AppState,
-    specs: &[external::RulesetSpec],
+    specs: &[crate::external::RulesetSpec],
     authorized: bool,
-) -> Result<Vec<LoadedRuleset>> {
-    if specs.len() > state.config.advance.max_allowed_rulesets {
-        return Err(AppError::Limit(format!(
-            "ruleset count {} exceeds limit {}",
-            specs.len(),
-            state.config.advance.max_allowed_rulesets
-        )));
-    }
-    if !authorized
-        && specs
-            .iter()
-            .any(|spec| !spec.inline && is_sensitive_source(&spec.source))
-    {
-        return Err(AppError::Unauthorized(
-            "token is required for local rulesets".into(),
-        ));
-    }
-    let concurrency = state
-        .config
-        .advance
-        .fetch_concurrency
-        .min(specs.len())
-        .max(1);
-    let ttl = Duration::from_secs(state.config.advance.cache_ruleset);
-    let skip_failed = state.config.advance.skip_failed_links;
-    let mut loaded: Vec<(usize, Option<LoadedRuleset>)> = stream::iter(
-        specs.iter().cloned().enumerate(),
-    )
-    .map(|(index, spec)| {
-        let state = state.clone();
-        async move {
-            let result = async {
-                let content = if spec.inline {
-                    spec.source.clone()
-                } else {
-                    let bytes = state.fetcher.get(&spec.source, ttl, false).await?;
-                    std::str::from_utf8(&bytes)
-                        .map_err(|_| AppError::BadRequest("ruleset is not UTF-8".into()))?
-                        .to_owned()
-                };
-                Ok::<_, AppError>(LoadedRuleset {
-                    group: spec.group,
-                    source: if spec.inline {
-                        String::new()
-                    } else {
-                        spec.source.clone()
-                    },
-                    content,
-                    format: spec.format,
-                })
-            }
-            .await;
-            match result {
-                Ok(ruleset) => Ok((index, Some(ruleset))),
-                Err(error) if skip_failed => {
-                    tracing::warn!(%error, source = %spec.source, "skipping failed ruleset");
-                    Ok((index, None))
-                }
-                Err(error) => Err(error),
-            }
-        }
-    })
-    .buffer_unordered(concurrency)
-    .try_collect()
-    .await?;
-    loaded.sort_by_key(|(index, _)| *index);
-    Ok(loaded
-        .into_iter()
-        .filter_map(|(_, ruleset)| ruleset)
-        .collect())
+) -> Result<Vec<crate::external::LoadedRuleset>> {
+    state.subscriptions.load_rulesets(specs, authorized).await
 }
 
 fn query_variables(raw_query: Option<&str>) -> std::collections::HashMap<String, String> {
@@ -831,6 +468,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
+    use crate::external;
     use axum::{body::to_bytes, http::Request, routing::get};
     use serde_json::Value;
     use tokio::net::TcpListener;

@@ -1,10 +1,13 @@
+use thiserror::Error;
+
+#[cfg(feature = "server")]
 use axum::{
     Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+#[cfg(feature = "server")]
 use serde_json::json;
-use thiserror::Error;
 
 pub type Result<T, E = AppError> = std::result::Result<T, E>;
 
@@ -30,6 +33,7 @@ pub enum AppError {
     Internal(String),
 }
 
+#[cfg(feature = "server")]
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match self {

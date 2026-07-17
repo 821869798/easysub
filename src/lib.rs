@@ -1,3 +1,4 @@
+#[cfg(feature = "server")]
 pub mod api;
 pub mod config;
 pub mod error;
@@ -11,4 +12,5 @@ pub mod parser;
 pub mod private;
 pub mod rules;
 mod structured;
+pub mod subscription;
 pub mod template;
