@@ -1,3 +1,5 @@
+//! Mihomo MRS encoding.
+
 use std::{
     collections::{BTreeSet, VecDeque},
     io::Write,

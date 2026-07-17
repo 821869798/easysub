@@ -1,3 +1,5 @@
+//! Runtime configuration shared by library consumers and the server.
+
 use std::{
     collections::HashMap,
     env,

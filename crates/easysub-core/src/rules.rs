@@ -1,3 +1,5 @@
+//! Ruleset parsing and normalization.
+
 use ipnet::IpNet;
 use serde::Deserialize;
 

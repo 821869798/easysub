@@ -1,3 +1,5 @@
+//! Protocol-neutral proxy and rule models.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

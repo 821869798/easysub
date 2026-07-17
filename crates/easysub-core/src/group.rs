@@ -1,3 +1,5 @@
+//! Proxy group selection.
+
 use std::collections::HashSet;
 
 use regex::Regex;

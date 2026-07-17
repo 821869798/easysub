@@ -1,3 +1,5 @@
+//! Clash/Mihomo YAML export.
+
 use std::{collections::HashMap, path::Path};
 
 use serde_json::{Map, Value, json};

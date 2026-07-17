@@ -1,3 +1,5 @@
+//! Outbound source fetching and bounded in-memory caching.
+
 use std::{
     path::{Component, Path, PathBuf},
     sync::Arc,

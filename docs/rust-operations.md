@@ -135,10 +135,12 @@ WantedBy=multi-user.target
 
    ```powershell
    cargo fmt --all -- --check
-   cargo clippy --all-targets -- -D warnings
-   cargo test --all-targets
+   cargo clippy --workspace --all-targets -- -D warnings
+   cargo test --workspace --all-targets
+   Push-Location legacy
    go test ./...
    go vet ./...
+   Pop-Location
    cargo build --release
    ./scripts/measure-release.ps1 -Concurrency 16
    ```

@@ -11,6 +11,7 @@ use axum::{
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
+use serde_json::json;
 use tokio::sync::Semaphore;
 use tower_http::{
     catch_panic::CatchPanicLayer,
@@ -31,6 +32,33 @@ use crate::{
         SubscriptionService, SubscriptionTarget,
     },
 };
+
+struct ApiError(AppError);
+
+type ApiResult<T> = std::result::Result<T, ApiError>;
+
+impl From<AppError> for ApiError {
+    fn from(error: AppError) -> Self {
+        Self(error)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let error = self.0;
+        let status = match &error {
+            AppError::BadRequest(_) | AppError::Unsupported(_) => StatusCode::BAD_REQUEST,
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Limit(_) => StatusCode::PAYLOAD_TOO_LARGE,
+            AppError::Upstream(_) => StatusCode::BAD_GATEWAY,
+            AppError::Config(_) | AppError::Conversion(_) | AppError::Internal(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        };
+        (status, axum::Json(json!({ "error": error.to_string() }))).into_response()
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -58,10 +86,10 @@ pub fn router(state: AppState) -> Router {
     let app = Router::new()
         .route("/", get(root))
         .route("/healthz", get(health))
-        .route("/sub", get(subscription))
-        .route("/ruleset", get(ruleset));
+        .route("/sub", get(subscription_http))
+        .route("/ruleset", get(ruleset_http));
     let app = if state.config.private_subscriptions.is_some() {
-        app.route("/p/{*path}", get(private_subscription))
+        app.route("/p/{*path}", get(private_subscription_http))
     } else {
         app
     };
@@ -82,6 +110,16 @@ async fn root() -> &'static str {
 
 async fn health() -> StatusCode {
     StatusCode::NO_CONTENT
+}
+
+async fn private_subscription_http(
+    state: State<AppState>,
+    path: Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    private_subscription(state, path, headers)
+        .await
+        .map_err(Into::into)
 }
 
 async fn private_subscription(
@@ -174,6 +212,17 @@ async fn subscription(
     .await
 }
 
+async fn subscription_http(
+    state: State<AppState>,
+    raw_query: RawQuery,
+    query: Query<SubscriptionQuery>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    subscription(state, raw_query, query, headers)
+        .await
+        .map_err(Into::into)
+}
+
 async fn subscription_impl(
     State(state): State<AppState>,
     RawQuery(raw_query): RawQuery,
@@ -232,6 +281,10 @@ struct RulesetQuery {
     url: String,
     behavior: String,
     token: Option<String>,
+}
+
+async fn ruleset_http(state: State<AppState>, query: Query<RulesetQuery>) -> ApiResult<Response> {
+    ruleset(state, query).await.map_err(Into::into)
 }
 
 async fn ruleset(
@@ -403,13 +456,6 @@ fn enforce_source_limit(sources: &[String], config: &AppConfig) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-fn merge_fetch_metadata(
-    loaded: &[(usize, Vec<crate::model::Proxy>, FetchMetadata)],
-) -> FetchMetadata {
-    crate::subscription::merge_fetch_metadata(loaded)
-}
-
 fn apply_fetch_metadata(response: &mut Response, metadata: &FetchMetadata) {
     let headers = [
         ("subscription-userinfo", &metadata.subscription_userinfo),
@@ -431,15 +477,6 @@ fn apply_fetch_metadata(response: &mut Response, metadata: &FetchMetadata) {
             }
         }
     }
-}
-
-#[cfg(test)]
-async fn load_rulesets(
-    state: &AppState,
-    specs: &[crate::external::RulesetSpec],
-    authorized: bool,
-) -> Result<Vec<crate::external::LoadedRuleset>> {
-    state.subscriptions.load_rulesets(specs, authorized).await
 }
 
 fn query_variables(raw_query: Option<&str>) -> std::collections::HashMap<String, String> {
@@ -468,7 +505,6 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
 
-    use crate::external;
     use axum::{body::to_bytes, http::Request, routing::get};
     use serde_json::Value;
     use tokio::net::TcpListener;
@@ -614,36 +650,6 @@ mod tests {
         assert_eq!(upstream_hits.load(Ordering::Relaxed), 1);
 
         server.abort();
-    }
-
-    #[test]
-    fn merges_each_metadata_field_in_source_order() {
-        let loaded = vec![
-            (
-                0,
-                Vec::new(),
-                FetchMetadata {
-                    subscription_userinfo: Some("upload=1".into()),
-                    ..FetchMetadata::default()
-                },
-            ),
-            (
-                1,
-                Vec::new(),
-                FetchMetadata {
-                    subscription_userinfo: Some("upload=2".into()),
-                    profile_web_page_url: Some("https://portal.example.com".into()),
-                    profile_update_interval: Some("24".into()),
-                },
-            ),
-        ];
-        let metadata = merge_fetch_metadata(&loaded);
-        assert_eq!(metadata.subscription_userinfo.as_deref(), Some("upload=1"));
-        assert_eq!(
-            metadata.profile_web_page_url.as_deref(),
-            Some("https://portal.example.com")
-        );
-        assert_eq!(metadata.profile_update_interval.as_deref(), Some("24"));
     }
 
     fn fixture_config() -> AppConfig {
@@ -1049,34 +1055,5 @@ value = "sub?target=clash&url={node}&config={external}"
         let clash: serde_yaml::Value = serde_yaml::from_slice(&body).unwrap();
         assert_eq!(clash["proxies"].as_sequence().unwrap().len(), 1);
         assert_eq!(clash["proxies"][0]["name"], "edge");
-    }
-
-    #[tokio::test]
-    async fn preserves_ruleset_order_while_skipping_failures() {
-        let state = AppState::new(Arc::new(fixture_config())).unwrap();
-        let specs = [
-            external::RulesetSpec {
-                group: "BROKEN".into(),
-                source: "unsupported://rules".into(),
-                interval: 0,
-                format: external::RulesetFormat::Surge,
-                inline: false,
-            },
-            external::RulesetSpec {
-                group: "FINAL".into(),
-                source: "[]FINAL".into(),
-                interval: 0,
-                format: external::RulesetFormat::Surge,
-                inline: true,
-            },
-        ];
-        let loaded = load_rulesets(&state, &specs, true).await.unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].group, "FINAL");
-
-        let mut strict_config = fixture_config();
-        strict_config.advance.skip_failed_links = false;
-        let strict_state = AppState::new(Arc::new(strict_config)).unwrap();
-        assert!(load_rulesets(&strict_state, &specs, true).await.is_err());
     }
 }

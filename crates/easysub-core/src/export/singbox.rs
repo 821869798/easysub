@@ -1,3 +1,5 @@
+//! sing-box JSON export.
+
 use std::collections::{HashMap, HashSet};
 
 use serde_json::{Map, Value, json};

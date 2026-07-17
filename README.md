@@ -58,18 +58,18 @@ Prerelease，容器会发布完整版本标签（例如 `0.2.0-rc.1`），不会
 
 ### 作为 Rust 库使用
 
-完整的订阅转换流程位于 `subscription` 模块，包括订阅和外部配置下载、内存缓存、节点解析、
-远程 ruleset/base template 获取，以及 Clash YAML 或 sing-box JSON 生成。它不依赖 Axum；
-其他 Rust 工程可以关闭默认的服务端 feature：
+完整的订阅转换流程位于独立的 `easysub-core` crate，包括订阅和外部配置下载、内存缓存、
+节点解析、远程 ruleset/base template 获取，以及 Clash YAML 或 sing-box JSON 生成。
+该 crate 不声明 Axum 依赖，其他 Rust 工程可以直接引用：
 
 ```toml
 [dependencies]
-easysub-rs = { git = "https://github.com/821869798/easysub", default-features = false }
+easysub-core = { git = "https://github.com/821869798/easysub", package = "easysub-core" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 ```rust
-use easysub_rs::{
+use easysub_core::{
     config::AppConfig,
     subscription::{
         SubscriptionInput, SubscriptionRequest, SubscriptionService, SubscriptionTarget,

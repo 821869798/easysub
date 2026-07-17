@@ -1,3 +1,5 @@
+//! Subscription and proxy URI parsing.
+
 use std::collections::HashMap;
 
 use base64::{Engine as _, engine::general_purpose};

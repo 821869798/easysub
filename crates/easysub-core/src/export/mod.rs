@@ -1,3 +1,5 @@
+//! Clash and sing-box configuration exporters.
+
 mod clash;
 mod singbox;
 

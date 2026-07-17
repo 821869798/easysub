@@ -288,10 +288,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
-name = "easysub-rs"
+name = "easysub-core"
 version = "0.1.0"
 dependencies = [
- "axum",
  "base64",
  "bytes",
  "futures-util",
@@ -310,6 +309,23 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "tracing",
+ "url",
+ "zstd",
+]
+
+[[package]]
+name = "easysub-rs"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "easysub-core",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
  "tower",
  "tower-http 0.7.0",
  "tracing",

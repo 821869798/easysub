@@ -1,3 +1,5 @@
+//! Liquid template rendering.
+
 use std::{collections::HashMap, sync::LazyLock};
 
 use liquid_core::{

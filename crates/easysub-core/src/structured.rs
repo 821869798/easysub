@@ -1,3 +1,5 @@
+//! Structured subscription format parsing.
+
 use std::collections::HashMap;
 
 use serde_json::{Map, Value};

@@ -1,3 +1,5 @@
+//! Private subscription rewrite configuration.
+
 use std::collections::HashMap;
 
 use serde::Deserialize;

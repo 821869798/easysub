@@ -37,9 +37,12 @@ jobs:
           set -euo pipefail
           tag_version="${GITHUB_REF_NAME#v}"
           cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          core_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/easysub-core/Cargo.toml | head -n 1)"
           echo "tag version: ${tag_version}"
           echo "Cargo version: ${cargo_version}"
+          echo "easysub-core version: ${core_version}"
           test "${tag_version}" = "${cargo_version}"
+          test "${tag_version}" = "${core_version}"
           if [[ "${tag_version}" == *-* ]]; then
             prerelease=true
           else
@@ -55,8 +58,8 @@ jobs:
       - name: Validate source
         run: |
           cargo fmt --all -- --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --all-targets
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace --all-targets
 
   create-release:
     name: Create draft release

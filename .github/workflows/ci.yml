@@ -9,6 +9,7 @@ on:
       - Cargo.lock
       - rust-toolchain.toml
       - "src/**"
+      - "crates/**"
       - "tests/**"
       - "benches/**"
       - "scratch/generated_test_*"
@@ -23,6 +24,7 @@ on:
       - Cargo.lock
       - rust-toolchain.toml
       - "src/**"
+      - "crates/**"
       - "tests/**"
       - "benches/**"
       - "scratch/generated_test_*"
@@ -61,10 +63,19 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run Rust tests, golden corpus, and properties
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets
+
+      - name: Verify core has no Axum dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if cargo tree -p easysub-core -e normal | grep -Eq '(^|[[:space:]])axum v'; then
+            echo "easysub-core must not depend on Axum" >&2
+            exit 1
+          fi
 
   performance:
     name: Release performance and size

@@ -1,3 +1,5 @@
+//! Complete reusable subscription conversion workflow.
+
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -803,6 +805,65 @@ mod tests {
         assert!(output.content.contains("example.org"));
         assert!(output.content.contains("name: Proxy"));
         assert!(output.content.contains("name: edge"));
+    }
+
+    #[test]
+    fn merges_each_metadata_field_in_source_order() {
+        let loaded = vec![
+            (
+                0,
+                Vec::new(),
+                FetchMetadata {
+                    subscription_userinfo: Some("upload=1".into()),
+                    ..FetchMetadata::default()
+                },
+            ),
+            (
+                1,
+                Vec::new(),
+                FetchMetadata {
+                    subscription_userinfo: Some("upload=2".into()),
+                    profile_web_page_url: Some("https://portal.example.com".into()),
+                    profile_update_interval: Some("24".into()),
+                },
+            ),
+        ];
+        let metadata = merge_fetch_metadata(&loaded);
+        assert_eq!(metadata.subscription_userinfo.as_deref(), Some("upload=1"));
+        assert_eq!(
+            metadata.profile_web_page_url.as_deref(),
+            Some("https://portal.example.com")
+        );
+        assert_eq!(metadata.profile_update_interval.as_deref(), Some("24"));
+    }
+
+    #[tokio::test]
+    async fn preserves_ruleset_order_while_skipping_failures() {
+        let specs = [
+            external::RulesetSpec {
+                group: "BROKEN".into(),
+                source: "unsupported://rules".into(),
+                interval: 0,
+                format: external::RulesetFormat::Surge,
+                inline: false,
+            },
+            external::RulesetSpec {
+                group: "FINAL".into(),
+                source: "[]FINAL".into(),
+                interval: 0,
+                format: external::RulesetFormat::Surge,
+                inline: true,
+            },
+        ];
+        let service = SubscriptionService::new(Arc::new(AppConfig::default())).unwrap();
+        let loaded = service.load_rulesets(&specs, true).await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].group, "FINAL");
+
+        let mut strict_config = AppConfig::default();
+        strict_config.advance.skip_failed_links = false;
+        let strict_service = SubscriptionService::new(Arc::new(strict_config)).unwrap();
+        assert!(strict_service.load_rulesets(&specs, true).await.is_err());
     }
 
     #[test]

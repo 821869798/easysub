@@ -5,6 +5,7 @@ RUN apk add --no-cache build-base cmake perl
 WORKDIR /build
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src ./src
+COPY crates ./crates
 COPY benches ./benches
 RUN test "$(rustc --version | awk '{print $2}')" = "1.96.0"
 RUN cargo build --locked --release

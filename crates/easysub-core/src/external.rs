@@ -1,3 +1,5 @@
+//! Subconverter-style external configuration parsing.
+
 use crate::error::{AppError, Result};
 
 #[derive(Debug, Clone, Default)]
@@ -306,12 +308,14 @@ ruleset=SELECT,[]FINAL"#,
     #[test]
     fn parses_all_checked_in_external_config_fixtures() {
         let fixtures = [
-            include_str!("../workdir/file_share/ACL4SSR_NoRule.ini"),
-            include_str!("../workdir/file_share/ACL4SSR_Online_NoAuto.ini"),
-            include_str!("../docs/docker_example/workdir/file_share/ACL4SSR_NoRule.ini"),
-            include_str!("../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto.ini"),
+            include_str!("../../../workdir/file_share/ACL4SSR_NoRule.ini"),
+            include_str!("../../../workdir/file_share/ACL4SSR_Online_NoAuto.ini"),
+            include_str!("../../../docs/docker_example/workdir/file_share/ACL4SSR_NoRule.ini"),
             include_str!(
-                "../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto_AdblockPlus.ini"
+                "../../../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto.ini"
+            ),
+            include_str!(
+                "../../../docs/docker_example/workdir/file_share/ACL4SSR_Online_NoAuto_AdblockPlus.ini"
             ),
         ];
         for (index, fixture) in fixtures.into_iter().enumerate() {
