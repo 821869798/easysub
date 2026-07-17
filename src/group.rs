@@ -14,8 +14,9 @@ pub fn members(group: &ProxyGroup, nodes: &[Proxy]) -> Vec<String> {
             }
             continue;
         }
+        let matcher = SelectorMatcher::compile(selector);
         for node in nodes {
-            if !used.contains(&node.name) && matches_selector(selector, node) {
+            if !used.contains(&node.name) && matcher.matches(node) {
                 used.insert(node.name.clone());
                 selected.push(node.name.clone());
             }
@@ -27,43 +28,126 @@ pub fn members(group: &ProxyGroup, nodes: &[Proxy]) -> Vec<String> {
     selected
 }
 
-fn matches_selector(selector: &str, node: &Proxy) -> bool {
-    let (matched, tail) = if let Some(value) = selector.strip_prefix("!!GROUP=") {
-        special_regex(value, &node.group)
-    } else if let Some(value) = selector.strip_prefix("!!TYPE=") {
-        special_regex(value, &node.kind.label().to_ascii_uppercase())
-    } else if let Some(value) = selector.strip_prefix("!!SERVER=") {
-        special_regex(value, &node.server)
-    } else if let Some(value) = selector.strip_prefix("!!PORT=") {
-        special_range(value, i64::from(node.port))
-    } else if let Some(value) = selector.strip_prefix("!!GROUPID=") {
-        special_range(value, i64::from(node.group_id))
-    } else if let Some(value) = selector.strip_prefix("!!INSERT=") {
-        special_range(value, -i64::from(node.group_id))
-    } else {
-        return Regex::new(selector).is_ok_and(|regex| regex.is_match(&node.name));
-    };
-    matched
-        && tail
-            .filter(|tail| !tail.is_empty())
-            .is_none_or(|tail| Regex::new(tail).is_ok_and(|regex| regex.is_match(&node.name)))
+enum SelectorMatcher<'a> {
+    Name(Option<Regex>),
+    Field {
+        field: RegexField,
+        pattern: Option<Regex>,
+        tail: TailMatcher,
+    },
+    Range {
+        field: RangeField,
+        expression: &'a str,
+        tail: TailMatcher,
+    },
 }
 
-fn special_regex<'a>(value: &'a str, input: &str) -> (bool, Option<&'a str>) {
-    let (pattern, tail) = value
-        .split_once("!!")
-        .map_or((value, None), |(head, tail)| (head, Some(tail)));
-    (
-        Regex::new(pattern).is_ok_and(|regex| regex.is_match(input)),
-        tail,
-    )
+enum RegexField {
+    Group,
+    Type,
+    Server,
 }
 
-fn special_range(value: &str, target: i64) -> (bool, Option<&str>) {
-    let (range, tail) = value
+enum RangeField {
+    Port,
+    GroupId,
+    Insert,
+}
+
+enum TailMatcher {
+    None,
+    Regex(Option<Regex>),
+}
+
+impl TailMatcher {
+    fn compile(pattern: Option<&str>) -> Self {
+        match pattern.filter(|pattern| !pattern.is_empty()) {
+            Some(pattern) => Self::Regex(Regex::new(pattern).ok()),
+            None => Self::None,
+        }
+    }
+
+    fn matches(&self, name: &str) -> bool {
+        match self {
+            Self::None => true,
+            Self::Regex(regex) => regex.as_ref().is_some_and(|regex| regex.is_match(name)),
+        }
+    }
+}
+
+impl<'a> SelectorMatcher<'a> {
+    fn compile(selector: &'a str) -> Self {
+        for (prefix, field) in [
+            ("!!GROUP=", RegexField::Group),
+            ("!!TYPE=", RegexField::Type),
+            ("!!SERVER=", RegexField::Server),
+        ] {
+            if let Some(value) = selector.strip_prefix(prefix) {
+                let (pattern, tail) = split_special(value);
+                return Self::Field {
+                    field,
+                    pattern: Regex::new(pattern).ok(),
+                    tail: TailMatcher::compile(tail),
+                };
+            }
+        }
+        for (prefix, field) in [
+            ("!!PORT=", RangeField::Port),
+            ("!!GROUPID=", RangeField::GroupId),
+            ("!!INSERT=", RangeField::Insert),
+        ] {
+            if let Some(value) = selector.strip_prefix(prefix) {
+                let (expression, tail) = split_special(value);
+                return Self::Range {
+                    field,
+                    expression,
+                    tail: TailMatcher::compile(tail),
+                };
+            }
+        }
+        Self::Name(Regex::new(selector).ok())
+    }
+
+    fn matches(&self, node: &Proxy) -> bool {
+        let (matched, tail) = match self {
+            Self::Name(regex) => {
+                return regex
+                    .as_ref()
+                    .is_some_and(|regex| regex.is_match(&node.name));
+            }
+            Self::Field {
+                field,
+                pattern,
+                tail,
+            } => {
+                let matched = pattern.as_ref().is_some_and(|regex| match field {
+                    RegexField::Group => regex.is_match(&node.group),
+                    RegexField::Type => regex.is_match(&node.kind.label().to_ascii_uppercase()),
+                    RegexField::Server => regex.is_match(&node.server),
+                });
+                (matched, tail)
+            }
+            Self::Range {
+                field,
+                expression,
+                tail,
+            } => {
+                let target = match field {
+                    RangeField::Port => i64::from(node.port),
+                    RangeField::GroupId => i64::from(node.group_id),
+                    RangeField::Insert => -i64::from(node.group_id),
+                };
+                (match_range(expression, target), tail)
+            }
+        };
+        matched && tail.matches(&node.name)
+    }
+}
+
+fn split_special(value: &str) -> (&str, Option<&str>) {
+    value
         .split_once("!!")
-        .map_or((value, None), |(head, tail)| (head, Some(tail)));
-    (match_range(range, target), tail)
+        .map_or((value, None), |(head, tail)| (head, Some(tail)))
 }
 
 fn match_range(expression: &str, target: i64) -> bool {
@@ -134,5 +218,30 @@ mod tests {
         assert!(match_range("1-3,!2", 3));
         assert!(!match_range("1-3,!2", 2));
         assert!(match_range("!1,!2", 3));
+    }
+
+    #[test]
+    fn compiled_special_selectors_preserve_matching_semantics() {
+        let mut node = Proxy::new(ProxyKind::Trojan, "edge.example".into(), 443);
+        node.name = "alpha-edge".into();
+        node.group = "premium".into();
+        node.group_id = 7;
+
+        for selector in [
+            "^alpha",
+            "!!GROUP=^premium$!!edge$",
+            "!!TYPE=^TROJAN$",
+            "!!SERVER=example$",
+            "!!PORT=443",
+            "!!GROUPID=7",
+            "!!INSERT=-7",
+        ] {
+            assert!(
+                SelectorMatcher::compile(selector).matches(&node),
+                "selector should match: {selector}"
+            );
+        }
+        assert!(!SelectorMatcher::compile("[").matches(&node));
+        assert!(!SelectorMatcher::compile("!!GROUP=premium!![").matches(&node));
     }
 }

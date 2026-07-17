@@ -72,7 +72,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 | EXP-01 | [x] | Deterministic node names and ordering | Duplicate-name tests |
 | EXP-02 | [x] | Clash node output | Modern URI protocols plus structured Snell/WireGuard fields tested; Trojan uses Mihomo `sni`, and proxy/group YAML collection styles match the Go configuration |
 | EXP-03 | [x] | sing-box node output | Modern URI protocols and WireGuard endpoints tested; DNS detour, Clash modes, sniff/DNS rule prelude and WS path normalization match Go; generated config passes sing-box 1.14 validation; Snell intentionally skipped as unsupported |
-| EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests |
+| EXP-04 | [x] | Custom groups and ordered matchers | Literal/regex/special/range tests; regular expressions compile once per selector instead of once per node |
 | EXP-05 | [x] | Group types | select/url-test/fallback/load-balance/relay/SSID and Clash provider `use` tested; sing-box uses valid selector fallback where no native equivalent exists |
 | EXP-06 | [x] | Rule injection | Clash target filtering plus complete Go sing-box rule types, native numeric port/UID fields, range normalization and Go-compatible merged rule objects |
 | EXP-07 | [x] | sing-box GEOIP/GEOSITE transformations | Remote binary rule-sets and existing-base preservation tested |
@@ -105,12 +105,12 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 70 tests (67 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, merged HTTP ruleset sources, background cache expiry, metadata caching and Netch |
+| TEST-01 | [x] | Rust unit/integration suite | 71 tests (68 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, compiled group selectors, merged HTTP ruleset sources, background cache expiry, metadata caching and Netch |
 | TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
 | TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |
-| TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.653 ms; Clash 3.817 ms; sing-box 1.819 ms; 10k MRS 3.784 ms; 10k mixed rules 3.287 ms; 16 full-ACL requests 0.697 s |
-| TEST-06 | [x] | Release binary-size baseline | 7.69 MiB on Windows x86-64 with latest dependencies |
+| TEST-05 | [x] | Core and real-service performance harnesses | Current machine: 1k parse 1.612 ms; Clash 12.520 ms; sing-box 1.718 ms; 1k-node/10-regex group selection 0.754 ms; 10k MRS 3.615 ms; 10k mixed rules 3.099 ms; 16 full-ACL requests 0.697 s |
+| TEST-06 | [x] | Release binary-size baseline | 7.84 MiB on Windows x86-64 with latest dependencies |
 | TEST-07 | [-] | CI gates | First remote run exposed a stale 1.85 toolchain file; pin and explicit 1.96 assertions fixed, awaiting rerun |
 | DOC-01 | [x] | Rust deployment/operations README | Build/config precedence, resource limits, logging, SIGINT/SIGTERM shutdown, canary and rollback runbook |
 | CONT-01 | [-] | Rust multi-stage container image | Rust 1.96 builder, non-root Alpine runtime and healthcheck added; awaiting remote Docker CI because Docker is unavailable locally |

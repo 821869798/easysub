@@ -2,7 +2,8 @@ use std::{env, hint::black_box, time::Instant};
 
 use easysub_rs::{
     export::{to_clash, to_singbox},
-    external::RulesetFormat,
+    external::{GroupKind, ProxyGroup, RulesetFormat},
+    group,
     model::RuleBehavior,
     mrs,
     parser::parse_subscription,
@@ -21,6 +22,15 @@ fn main() {
         .collect::<Vec<_>>()
         .join("\n");
     let nodes = parse_subscription(&subscription, 0).expect("benchmark fixture must parse");
+    let regex_group = ProxyGroup {
+        name: "regex-benchmark".into(),
+        kind: GroupKind::Select,
+        selectors: (0..10).map(|digit| format!(r"node-\d*{digit}$")).collect(),
+        providers: Vec::new(),
+        url: String::new(),
+        interval: 0,
+        tolerance: 0,
+    };
     let domains = (0..10_000)
         .map(|index| format!("domain-{index}.example"))
         .collect::<Vec<_>>();
@@ -43,6 +53,9 @@ fn main() {
     });
     bench("singbox_export_1000_nodes", 100, || {
         black_box(to_singbox(black_box(&nodes), false, false).unwrap());
+    });
+    bench("group_select_1000_nodes", 100, || {
+        black_box(group::members(black_box(&regex_group), black_box(&nodes)));
     });
     bench("mrs_10000_domains", 30, || {
         black_box(mrs::encode(black_box(&domains), RuleBehavior::Domain).unwrap());
