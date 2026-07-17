@@ -6,7 +6,7 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
-use moka::future::Cache;
+use moka::{Expiry, future::Cache};
 
 use crate::{
     config::AppConfig,
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Fetcher {
     client: reqwest::Client,
-    cache: Cache<String, Arc<CachedValue>>,
+    cache: Arc<Cache<String, Arc<CachedValue>>>,
     max_bytes: usize,
     file_share_root: PathBuf,
     enable_file_share: bool,
@@ -25,7 +25,32 @@ pub struct Fetcher {
 struct CachedValue {
     body: Bytes,
     metadata: FetchMetadata,
-    expires_at: Instant,
+    ttl: Duration,
+}
+
+const CACHE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
+struct CachedValueExpiry;
+
+impl Expiry<String, Arc<CachedValue>> for CachedValueExpiry {
+    fn expire_after_create(
+        &self,
+        _key: &String,
+        value: &Arc<CachedValue>,
+        _created_at: Instant,
+    ) -> Option<Duration> {
+        Some(value.ttl)
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &String,
+        value: &Arc<CachedValue>,
+        _updated_at: Instant,
+        _duration_until_expiry: Option<Duration>,
+    ) -> Option<Duration> {
+        Some(value.ttl)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -52,16 +77,20 @@ impl Fetcher {
             .map_err(|error| {
                 AppError::Config(format!("HTTP client initialization failed: {error}"))
             })?;
-        let cache = Cache::builder()
-            .max_capacity(config.advance.cache_capacity_bytes)
-            .weigher(|_key: &String, value: &Arc<CachedValue>| {
-                value
-                    .body
-                    .len()
-                    .saturating_add(metadata_len(&value.metadata))
-                    .min(u32::MAX as usize) as u32
-            })
-            .build();
+        let cache = Arc::new(
+            Cache::builder()
+                .max_capacity(config.advance.cache_capacity_bytes)
+                .weigher(|_key: &String, value: &Arc<CachedValue>| {
+                    value
+                        .body
+                        .len()
+                        .saturating_add(metadata_len(&value.metadata))
+                        .min(u32::MAX as usize) as u32
+                })
+                .expire_after(CachedValueExpiry)
+                .build(),
+        );
+        spawn_cache_maintenance(&cache, CACHE_MAINTENANCE_INTERVAL);
         Ok(Self {
             client,
             cache,
@@ -109,14 +138,6 @@ impl Fetcher {
         if ttl == Duration::ZERO {
             return self.download(url).await;
         }
-        if ttl > Duration::ZERO
-            && let Some(value) = self.cache.get(url).await
-        {
-            if value.expires_at > Instant::now() {
-                return Ok(cached_result(&value));
-            }
-            self.cache.invalidate(url).await;
-        }
         let key = url.to_owned();
         let download_url = key.clone();
         let fetcher = self.clone();
@@ -127,7 +148,7 @@ impl Fetcher {
                 Result::<Arc<CachedValue>>::Ok(Arc::new(CachedValue {
                     body: result.body,
                     metadata: result.metadata,
-                    expires_at: Instant::now() + ttl,
+                    ttl,
                 }))
             })
             .await
@@ -180,6 +201,22 @@ impl Fetcher {
             metadata,
         })
     }
+}
+
+fn spawn_cache_maintenance(cache: &Arc<Cache<String, Arc<CachedValue>>>, interval: Duration) {
+    let weak_cache = Arc::downgrade(cache);
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    runtime.spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            let Some(cache) = weak_cache.upgrade() else {
+                break;
+            };
+            cache.run_pending_tasks().await;
+        }
+    });
 }
 
 fn header_value(headers: &reqwest::header::HeaderMap, name: &str) -> Option<String> {
@@ -260,5 +297,31 @@ mod tests {
     fn shared_paths_cannot_escape_root() {
         assert!(secure_join(Path::new("files"), "../secret").is_err());
         assert!(secure_join(Path::new("files"), "ok/list.txt").is_ok());
+    }
+
+    #[tokio::test]
+    async fn background_maintenance_removes_expired_unused_entries() {
+        let cache = Arc::new(
+            Cache::builder()
+                .max_capacity(1024)
+                .weigher(|_key: &String, value: &Arc<CachedValue>| value.body.len() as u32)
+                .expire_after(CachedValueExpiry)
+                .build(),
+        );
+        spawn_cache_maintenance(&cache, Duration::from_millis(100));
+        cache
+            .insert(
+                "unused".into(),
+                Arc::new(CachedValue {
+                    body: Bytes::from_static(b"cached"),
+                    metadata: FetchMetadata::default(),
+                    ttl: Duration::from_secs(1),
+                }),
+            )
+            .await;
+
+        // Moka's lowest timer-wheel resolution is approximately one second.
+        tokio::time::sleep(Duration::from_millis(2_200)).await;
+        assert_eq!(cache.entry_count(), 0);
     }
 }
