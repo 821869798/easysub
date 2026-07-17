@@ -42,7 +42,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 |---|---|---|---|
 | RES-01 | [~] | No Go-style global concurrency limit of 3 | 16 concurrent full-ACL requests passed |
 | RES-02 | [x] | Maximum upstream response bytes | Stream stops at configured byte limit |
-| RES-03 | [x] | Byte-weighted bounded cache | Moka cache uses response body weight |
+| RES-03 | [x] | Byte-weighted bounded cache | Moka TinyLFU cache uses response body weight with a 64 MiB default capacity |
 | RES-04 | [x] | Request coalescing | Same upstream key shares in-flight fetch |
 | RES-05 | [x] | URL/ruleset/rule-count limits | Exact-limit tests |
 | RES-06 | [x] | Heavy-task semaphore | MRS/zstd work only |
@@ -105,7 +105,7 @@ The rewrite is currently a usable development implementation, not yet a complete
 
 | ID | Status | Item | Acceptance evidence |
 |---|---|---|---|
-| TEST-01 | [x] | Rust unit/integration suite | 68 tests (65 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, merged HTTP ruleset sources, metadata caching and Netch |
+| TEST-01 | [x] | Rust unit/integration suite | 69 tests (66 unit, 2 legacy golden, 1 large corpus) covering external INI fixtures, rule-provider modes, merged HTTP ruleset sources, metadata caching and Netch |
 | TEST-02 | [~] | Legacy Go regression outside Rust CI | Rust workflow installs and runs only Rust; frozen compatibility fixtures remain |
 | TEST-03 | [x] | Frozen compatibility golden-output corpus | Reproducible Clash and sing-box fixtures cover base templates, VMess HTTP, Trojan, Hysteria2, WireGuard, groups, rules, geo transforms and final routing |
 | TEST-04 | [x] | Parser/ruleset/external-config property fuzz smoke | 128 bounded random cases per target on every test run |

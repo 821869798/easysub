@@ -177,7 +177,7 @@ impl Default for AdvancedConfig {
             max_allowed_rules: 1_000_000,
             max_allowed_rulesets: 64,
             max_download_bytes: 32 * 1024 * 1024,
-            cache_capacity_bytes: 128 * 1024 * 1024,
+            cache_capacity_bytes: 64 * 1024 * 1024,
             fetch_concurrency: cpus.saturating_mul(4).clamp(8, 64),
             heavy_task_concurrency: cpus.div_ceil(2).max(1),
             request_timeout_seconds: 30,
@@ -249,5 +249,18 @@ impl AppConfig {
         } else {
             self.base_dir.join(source).to_string_lossy().into_owned()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_cache_capacity_is_64_mib() {
+        assert_eq!(
+            AdvancedConfig::default().cache_capacity_bytes,
+            64 * 1024 * 1024
+        );
     }
 }
