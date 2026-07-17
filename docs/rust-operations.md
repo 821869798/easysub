@@ -1,8 +1,8 @@
 # Rust 版本部署与运维
 
 本文适用于仓库根目录的 `easysub-rs`。Rust 是当前服务实现；旧 Go 工程保留在
-[`legacy/`](../legacy/) 作为兼容性参考和回滚来源。正式切换前仍应完成
-[RUST_PROGRESS.md](../RUST_PROGRESS.md) 中的 canary 观察。
+[`legacy/`](../legacy/) 作为兼容性参考和回滚来源。迁移计划与历史验收记录归档在
+[`legacy/docs/`](../legacy/docs/)。
 
 ## 构建与启动
 
@@ -153,5 +153,4 @@ WantedBy=multi-user.target
 5. 回滚只需要把反向代理流量切回仍在运行的 Go 服务。配置或输出不一致时不要
    删除旧二进制，也不要让两个版本共享可变的生成文件。
 
-完成 canary 后，把实测版本、持续时间、请求数量、差异和资源峰值记录到
-[RUST_PROGRESS.md](../RUST_PROGRESS.md) 的 `CUT-01`，再决定是否替换 Go。
+完成 canary 后，应在对应版本的部署记录中保留持续时间、请求数量、输出差异和资源峰值。

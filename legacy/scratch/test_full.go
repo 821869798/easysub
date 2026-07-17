@@ -147,7 +147,7 @@ func main() {
 	}
 
 	// Write to temporary check file in absolute path
-	checkFilePath := "../scratch/generated_test_full.json"
+	checkFilePath := "../tests/fixtures/go_golden/generated_test_full.json"
 	err = os.WriteFile(checkFilePath, []byte(output), 0644)
 	if err != nil {
 		slog.Error("write generated_test_full.json error: " + err.Error())
@@ -195,7 +195,7 @@ func main() {
 		slog.Error("generate Clash config error: " + err.Error())
 		return
 	}
-	if err := os.WriteFile("../scratch/generated_test_clash.yml", []byte(clashOutput), 0644); err != nil {
+	if err := os.WriteFile("../tests/fixtures/go_golden/generated_test_clash.yml", []byte(clashOutput), 0644); err != nil {
 		slog.Error("write generated_test_clash.yml error: " + err.Error())
 		return
 	}

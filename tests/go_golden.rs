@@ -67,7 +67,7 @@ async fn matches_go_singbox_golden_semantics() {
     )
     .unwrap();
     let go: Value =
-        serde_json::from_str(include_str!("../scratch/generated_test_full.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/go_golden/generated_test_full.json")).unwrap();
 
     for tag in ["TestVMessHTTP", "TestTrojan", "TestHysteria2"] {
         let rust_outbound = tagged(&rust["outbounds"], tag);
@@ -173,7 +173,7 @@ async fn matches_go_clash_golden_semantics() {
     )
     .unwrap();
     let go: Value =
-        serde_yaml::from_str(include_str!("../scratch/generated_test_clash.yml")).unwrap();
+        serde_yaml::from_str(include_str!("fixtures/go_golden/generated_test_clash.yml")).unwrap();
 
     for field in ["mixed-port", "allow-lan", "mode", "log-level"] {
         assert_eq!(rust[field], go[field], "base field {field}");

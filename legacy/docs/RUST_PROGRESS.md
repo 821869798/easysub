@@ -1,5 +1,8 @@
 # easysub Rust rewrite progress
 
+> Archived migration checklist. Status, branch names, measurements, and work items below are
+> retained only as historical evidence.
+
 Last updated: 2026-07-17
 
 Branch: `feat/rust-rewrite`

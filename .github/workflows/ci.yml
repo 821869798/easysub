@@ -12,7 +12,6 @@ on:
       - "crates/**"
       - "tests/**"
       - "benches/**"
-      - "scratch/generated_test_*"
       - "workdir/**"
       - Dockerfile
       - .dockerignore
@@ -27,7 +26,6 @@ on:
       - "crates/**"
       - "tests/**"
       - "benches/**"
-      - "scratch/generated_test_*"
       - "workdir/**"
       - Dockerfile
       - .dockerignore

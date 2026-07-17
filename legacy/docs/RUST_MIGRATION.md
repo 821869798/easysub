@@ -1,5 +1,8 @@
 # easysub Rust migration plan
 
+> Archived migration record. This document is historical and no longer describes the active
+> repository status or architecture.
+
 The migration implementation is complete. Rust is the repository-root service,
 while the previous Go module is archived under `legacy/` as a compatibility oracle
 and rollback source.
