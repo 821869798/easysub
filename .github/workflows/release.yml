@@ -324,6 +324,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ needs.validate.outputs.prerelease == 'false' }}
             type=semver,pattern={{major}},enable=${{ needs.validate.outputs.prerelease == 'false' }}
             type=raw,value=latest,enable=${{ needs.validate.outputs.prerelease == 'false' }}
+            type=raw,value=edge
 
       - name: Create and verify multi-platform manifest
         env:
