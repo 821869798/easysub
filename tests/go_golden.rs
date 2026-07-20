@@ -69,6 +69,20 @@ async fn matches_go_singbox_golden_semantics() {
     let go: Value =
         serde_json::from_str(include_str!("fixtures/go_golden/generated_test_full.json")).unwrap();
 
+    for ruleset in rust["route"]["rule_set"].as_array().unwrap() {
+        if ruleset["type"] == "remote" {
+            assert_eq!(ruleset["http_client"], "easysub-ruleset-direct");
+        }
+    }
+    assert!(
+        rust["http_clients"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|client| client["tag"] == "easysub-ruleset-direct"
+                && client.as_object().unwrap().len() == 1)
+    );
+
     for tag in ["TestVMessHTTP", "TestTrojan", "TestHysteria2"] {
         let rust_outbound = tagged(&rust["outbounds"], tag);
         let go_outbound = tagged(&go["outbounds"], tag);
@@ -114,7 +128,11 @@ async fn matches_go_singbox_golden_semantics() {
         assert_eq!(rust_ruleset["type"], go_ruleset["type"]);
         assert_eq!(rust_ruleset["format"], go_ruleset["format"]);
         assert_eq!(rust_ruleset["url"], go_ruleset["url"]);
-        assert_eq!(rust_ruleset["http_client"], go_ruleset["http_client"]);
+        // The frozen Go fixture predates sing-box 1.14's rejection of detours
+        // to empty direct outbounds. Current output intentionally uses a
+        // shared native-direct HTTP client instead.
+        assert_eq!(rust_ruleset["http_client"], "easysub-ruleset-direct");
+        assert_eq!(go_ruleset["http_client"]["detour"], "DIRECT");
     }
 }
 

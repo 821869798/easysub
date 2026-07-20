@@ -16,6 +16,7 @@ use crate::{
 use super::prepare_nodes;
 
 const DNS_PROXY_DETOUR_PLACEHOLDER: &str = "__DNS_PROXY_DETOUR__";
+const RULESET_HTTP_CLIENT_TAG: &str = "easysub-ruleset-direct";
 
 #[derive(Debug, Clone, Copy)]
 pub struct SingboxExportOptions {
@@ -195,6 +196,7 @@ pub fn to_singbox_full_with_options(
     }
     apply_dns_proxy_detour(object);
     if !options.generate_rules {
+        ensure_ruleset_http_client(object)?;
         return serde_json::to_string(&config).map_err(|error| {
             AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
         });
@@ -266,7 +268,7 @@ pub fn to_singbox_full_with_options(
                         "type": "remote",
                         "format": "binary",
                         "url": transform.url_format.replace("%s", &value),
-                        "http_client": {"detour": "DIRECT"},
+                        "http_client": RULESET_HTTP_CLIENT_TAG,
                         "update_interval": format_ruleset_interval(ruleset_update_interval)
                     }));
                 }
@@ -315,9 +317,57 @@ pub fn to_singbox_full_with_options(
             })
             .into(),
     );
+    ensure_ruleset_http_client(object)?;
     serde_json::to_string(&config).map_err(|error| {
         AppError::Conversion(format!("sing-box JSON serialization failed: {error}"))
     })
+}
+
+fn ensure_ruleset_http_client(config: &mut Map<String, Value>) -> Result<()> {
+    let Some(rule_sets) = config
+        .get_mut("route")
+        .and_then(Value::as_object_mut)
+        .and_then(|route| route.get_mut("rule_set"))
+        .and_then(Value::as_array_mut)
+    else {
+        return Ok(());
+    };
+    let mut used = false;
+    for rule_set in rule_sets {
+        let Some(rule_set) = rule_set.as_object_mut() else {
+            continue;
+        };
+        let generated_client =
+            rule_set.get("http_client").and_then(Value::as_str) == Some(RULESET_HTTP_CLIENT_TAG);
+        let obsolete_direct_detour = rule_set
+            .get("http_client")
+            .and_then(Value::as_object)
+            .is_some_and(|client| {
+                client.len() == 1 && client.get("detour").and_then(Value::as_str) == Some("DIRECT")
+            });
+        if generated_client || obsolete_direct_detour {
+            rule_set.insert(
+                "http_client".into(),
+                Value::String(RULESET_HTTP_CLIENT_TAG.into()),
+            );
+            used = true;
+        }
+    }
+    if !used {
+        return Ok(());
+    }
+    let clients = config
+        .entry("http_clients")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| AppError::Conversion("sing-box http_clients must be an array".into()))?;
+    if !clients
+        .iter()
+        .any(|client| client.get("tag").and_then(Value::as_str) == Some(RULESET_HTTP_CLIENT_TAG))
+    {
+        clients.push(json!({"tag": RULESET_HTTP_CLIENT_TAG}));
+    }
+    Ok(())
 }
 
 fn merge_adjacent_rulesets(rulesets: &[LoadedRuleset]) -> Vec<LoadedRuleset> {
@@ -792,13 +842,45 @@ mod tests {
             .find(|ruleset| ruleset["tag"] == "geoip-cn")
             .unwrap();
         assert_eq!(geoip["url"], "https://example.test/geoip/cn.srs");
-        assert_eq!(geoip["http_client"]["detour"], "DIRECT");
+        assert_eq!(geoip["http_client"], RULESET_HTTP_CLIENT_TAG);
         assert_eq!(geoip["update_interval"], "5d");
+        assert!(
+            config["http_clients"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|client| client["tag"] == RULESET_HTTP_CLIENT_TAG
+                    && client.as_object().unwrap().len() == 1)
+        );
         let geosite = rule_sets
             .iter()
             .find(|ruleset| ruleset["tag"] == "geosite-openai")
             .unwrap();
         assert_eq!(geosite["url"], "https://example.test/geosite/openai.srs");
+    }
+
+    #[test]
+    fn migrates_empty_direct_ruleset_detour() {
+        let mut config = json!({
+            "route": {
+                "rule_set": [{
+                    "tag": "legacy",
+                    "type": "remote",
+                    "http_client": {"detour": "DIRECT"}
+                }]
+            }
+        });
+
+        ensure_ruleset_http_client(config.as_object_mut().unwrap()).unwrap();
+
+        assert_eq!(
+            config["route"]["rule_set"][0]["http_client"],
+            RULESET_HTTP_CLIENT_TAG
+        );
+        assert_eq!(
+            config["http_clients"],
+            json!([{"tag": RULESET_HTTP_CLIENT_TAG}])
+        );
     }
 
     #[test]

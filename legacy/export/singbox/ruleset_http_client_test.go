@@ -64,6 +64,24 @@ func TestDynamicRulesetUsesSingBox114HTTPClient(t *testing.T) {
 	assertRuleSetHTTPClient(t, ruleSet)
 }
 
+func TestRulesetHTTPClientMigratesEmptyDirectDetour(t *testing.T) {
+	ruleSet := map[string]interface{}{
+		"type":        "remote",
+		"http_client": map[string]interface{}{"detour": "DIRECT"},
+	}
+	document := map[string]interface{}{
+		"route": map[string]interface{}{"rule_set": []interface{}{ruleSet}},
+	}
+
+	ensureRulesetHTTPClient(document)
+
+	assertRuleSetHTTPClient(t, ruleSet)
+	clients := document["http_clients"].([]interface{})
+	if len(clients) != 1 || clients[0].(map[string]interface{})["tag"] != rulesetHTTPClientTag {
+		t.Fatalf("http_clients = %#v, want shared direct client", clients)
+	}
+}
+
 func TestAppendSingBoxRuleKeepsOnlyRuleTypeAndValue(t *testing.T) {
 	rules := make(map[string]interface{})
 	appendSingBoxRule(rules, "DOMAIN-SUFFIX,Example.COM,no-resolve")
@@ -98,11 +116,7 @@ func assertRuleSetHTTPClient(t *testing.T, ruleSet map[string]interface{}) {
 	if _, exists := ruleSet["download_detour"]; exists {
 		t.Fatal("generated rule-set contains deprecated download_detour")
 	}
-	httpClient, ok := ruleSet["http_client"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("http_client has unexpected type: %T", ruleSet["http_client"])
-	}
-	if got := httpClient["detour"]; got != "DIRECT" {
-		t.Fatalf("http_client.detour = %v, want DIRECT", got)
+	if got := ruleSet["http_client"]; got != rulesetHTTPClientTag {
+		t.Fatalf("http_client = %v, want %s", got, rulesetHTTPClientTag)
 	}
 }

@@ -75,12 +75,13 @@ fn expand_ruleset_tags(source: &str, config: &AppConfig) -> Result<String> {
             return "null".into();
         };
         let url = transform.url_format.replace("%s", &value);
+        // The exporter installs this shared native-direct HTTP client.
         serde_json::json!({
             "tag": format!("{kind}-{value}"),
             "type": "remote",
             "format": "binary",
             "url": url,
-            "http_client": {"detour": "DIRECT"},
+            "http_client": "easysub-ruleset-direct",
             "update_interval": format_duration(config.managed_config.ruleset_update_interval)
         })
         .to_string()

@@ -20,7 +20,10 @@ var (
 	singboxTplEngine *liquid.Engine
 )
 
-const dnsProxyDetourPlaceholder = "__DNS_PROXY_DETOUR__"
+const (
+	dnsProxyDetourPlaceholder = "__DNS_PROXY_DETOUR__"
+	rulesetHTTPClientTag      = "easysub-ruleset-direct"
+)
 
 func init() {
 	singboxTplEngine = tpl.CreateDefaultEngine()
@@ -44,7 +47,7 @@ func init() {
 			"type":            "remote",
 			"format":          "binary",
 			"url":             realUrl,
-			"http_client":     map[string]interface{}{"detour": "DIRECT"},
+			"http_client":     rulesetHTTPClientTag,
 			"update_interval": "5d",
 		}
 		// json 序列化
@@ -77,6 +80,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 	applyDnsProxyDetour(jsonObject)
 
 	if !extraSetting.EnableRuleGenerator {
+		ensureRulesetHTTPClient(jsonObject)
 		jsBytes, err := json.Marshal(jsonObject)
 		if err != nil {
 			slog.Error("sing-box json marshal failed with error: " + err.Error())
@@ -86,6 +90,7 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 	}
 
 	rulesetToSingBox(jsonObject, rulesetContent, extraSetting.OverwriteOriginalRules)
+	ensureRulesetHTTPClient(jsonObject)
 
 	jsBytes, err := json.Marshal(jsonObject)
 	if err != nil {
@@ -93,6 +98,50 @@ func ProxyToSingBox(nodes []*define.Proxy, baseConf string, rulesetContent []*de
 		return "", err
 	}
 	return string(jsBytes), nil
+}
+
+func ensureRulesetHTTPClient(jsonObject map[string]interface{}) {
+	route, ok := jsonObject["route"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	ruleSets, ok := route["rule_set"].([]interface{})
+	if !ok {
+		return
+	}
+	used := false
+	for _, value := range ruleSets {
+		ruleSet, ok := value.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if ruleSet["http_client"] == rulesetHTTPClientTag {
+			used = true
+			continue
+		}
+		client, ok := ruleSet["http_client"].(map[string]interface{})
+		if ok && len(client) == 1 && client["detour"] == "DIRECT" {
+			ruleSet["http_client"] = rulesetHTTPClientTag
+			used = true
+		}
+	}
+	if !used {
+		return
+	}
+	clients, ok := jsonObject["http_clients"].([]interface{})
+	if !ok {
+		if _, exists := jsonObject["http_clients"]; exists {
+			return
+		}
+		clients = make([]interface{}, 0, 1)
+	}
+	for _, value := range clients {
+		client, ok := value.(map[string]interface{})
+		if ok && client["tag"] == rulesetHTTPClientTag {
+			return
+		}
+	}
+	jsonObject["http_clients"] = append(clients, map[string]interface{}{"tag": rulesetHTTPClientTag})
 }
 
 func proxyToSingBoxInternal(nodes []*define.Proxy, jsonObject map[string]interface{}, extraProxyGroup []*define.ProxyGroupConfig, extraSetting *define.ExtraSettings) {
@@ -704,7 +753,7 @@ func transformRuleToSingBox(rule, group string, rulesets map[string]interface{})
 					"type":            "remote",
 					"format":          "binary",
 					"url":             realUrl,
-					"http_client":     map[string]interface{}{"detour": "DIRECT"},
+					"http_client":     rulesetHTTPClientTag,
 					"update_interval": "5d",
 				}
 				rulesets[tagName] = rulesetObject
